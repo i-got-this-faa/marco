@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"github.com/i-got-this-faa/marco/pkg/metrics"
 	"github.com/i-got-this-faa/marco/pkg/queue"
 	"github.com/i-got-this-faa/marco/pkg/ratelimit"
+	"github.com/i-got-this-faa/marco/pkg/util"
 )
 
 // Backend implements smtp.Backend.
@@ -45,9 +47,10 @@ func (b *Backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
 
 	b.metrics.SMTPConnections.Inc()
 	b.metrics.ActiveConnections.Inc()
-
+	ctx := util.NewContextWithCID(context.Background())
 	return &Session{
 		backend: b,
 		conn:    conn,
+		ctx:     ctx,
 	}, nil
 }

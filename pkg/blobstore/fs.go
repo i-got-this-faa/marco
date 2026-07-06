@@ -3,6 +3,7 @@ package blobstore
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -31,29 +32,30 @@ func uuidV4() string {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// Put writes a blob from a reader to the filesystem. It returns a
-// UUID v4 key that can be used to retrieve the blob later.
+// Put writes a blob from a reader to the filesystem. The key is the
+// SHA-256 digest of the content, providing content-addressed dedup.
 func (s *FSStore) Put(ctx context.Context, r io.Reader, metadata map[string]string) (string, int64, error) {
-	key := uuidV4()
+	key, data, size, err := sha256Key(r)
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Check if file already exists — fast path for dedup.
 	shard := filepath.Join(s.root, key[0:2], key[2:4])
 	path := filepath.Join(shard, key)
+	if fi, err := os.Stat(path); err == nil && fi.Size() > 0 {
+		return key, size, nil
+	}
 
 	if err := os.MkdirAll(shard, 0755); err != nil {
 		return "", 0, fmt.Errorf("blobstore: mkdir: %w", err)
 	}
 
-	f, err := os.Create(path)
-	if err != nil {
-		return "", 0, fmt.Errorf("blobstore: create: %w", err)
-	}
-	defer f.Close()
-
-	written, err := io.Copy(f, r)
-	if err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return "", 0, fmt.Errorf("blobstore: write: %w", err)
 	}
 
-	return key, written, nil
+	return key, size, nil
 }
 
 // Get returns a reader for the blob identified by key.
@@ -104,6 +106,21 @@ func (s *FSStore) Capabilities() Capabilities {
 	return Capabilities{
 		Streaming: true,
 		RangeRead: true,
-		Checksums: false,
+		Checksums: true,
 	}
+}
+
+// sha256Key reads all data from r, computes its SHA-256 digest, and returns
+// the hex-encoded digest as the content-addressed key along with the raw
+// bytes and total size. The caller MUST NOT use data after calling this on
+// an FSStore or S3Store (they stream without buffering); only SQLiteStore
+// needs the buffered data for the INSERT.
+func sha256Key(r io.Reader) (key string, data []byte, size int64, err error) {
+	data, err = io.ReadAll(r)
+	if err != nil {
+		return "", nil, 0, fmt.Errorf("blobstore: read: %w", err)
+	}
+	h := sha256.Sum256(data)
+	key = fmt.Sprintf("%x", h)
+	return key, data, int64(len(data)), nil
 }

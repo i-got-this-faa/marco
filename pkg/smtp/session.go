@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/mail"
 	"strings"
@@ -16,11 +15,13 @@ import (
 	"github.com/emersion/go-smtp"
 	"github.com/i-got-this-faa/marco/pkg/spf"
 	"github.com/i-got-this-faa/marco/pkg/storage"
+	"github.com/i-got-this-faa/marco/pkg/util"
 )
 // Session implements smtp.Session for a single SMTP transaction.
 type Session struct {
 	backend    *Backend
 	conn       *smtp.Conn
+	ctx        context.Context
 	from       string
 	recipients []string
 	authed     bool
@@ -170,7 +171,7 @@ func (s *Session) Data(r io.Reader) error {
 			}
 			spfResult, spfErr := spf.NewChecker().Check(ip, domain, "")
 			if spfErr == nil {
-				slog.Debug("spf check",
+				util.LoggerWithCorrelationID(s.ctx).Debug("spf check",
 					"domain", domain,
 					"ip", ip,
 					"result", spfResult.Code.String(),

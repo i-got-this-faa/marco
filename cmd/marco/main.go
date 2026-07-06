@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
+	"github.com/i-got-this-faa/marco/pkg/config"
 	"github.com/i-got-this-faa/marco/pkg/marco"
 )
 
@@ -30,6 +31,10 @@ func main() {
 		genKey()
 	case "audit":
 		audit()
+	case "backup":
+		doBackup()
+	case "restore":
+		doRestore()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -86,10 +91,51 @@ func genKey() {
 }
 
 func audit() {
+	results := marco.Audit(config.DefaultPath())
+	pass, fail, warn := 0, 0, 0
 	fmt.Println("Marco Mail Server - Audit")
 	fmt.Println("========================")
-	fmt.Println("Status: MVP build - no audit checks implemented yet")
-	fmt.Println("Run 'marco run' to start the server")
+	for _, r := range results {
+		switch r.Status {
+		case "PASS":
+			pass++
+			fmt.Printf("  [PASS] %s: %s\n", r.Check, r.Message)
+		case "FAIL":
+			fail++
+			fmt.Printf("  [FAIL] %s: %s\n", r.Check, r.Message)
+		case "WARN":
+			warn++
+			fmt.Printf("  [WARN] %s: %s\n", r.Check, r.Message)
+		}
+	}
+	fmt.Println()
+	fmt.Printf("%d passed, %d failed, %d warnings\n", pass, fail, warn)
+}
+
+func doBackup() {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "Usage: marco backup <output.tar.gz>")
+		os.Exit(1)
+	}
+	cfgPath := config.DefaultPath()
+	if err := marco.Backup(cfgPath, os.Args[2]); err != nil {
+		fmt.Fprintf(os.Stderr, "Backup failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Backup created:", os.Args[2])
+}
+
+func doRestore() {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "Usage: marco restore <backup.tar.gz>")
+		os.Exit(1)
+	}
+	cfgPath := config.DefaultPath()
+	if err := marco.Restore(cfgPath, os.Args[2]); err != nil {
+		fmt.Fprintf(os.Stderr, "Restore failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Restore complete from:", os.Args[2])
 }
 
 func printHelp() {
@@ -102,6 +148,8 @@ func printHelp() {
 	fmt.Println("  run              Start the mail server (default)")
 	fmt.Println("  hash-password    Hash a password using Argon2id")
 	fmt.Println("  gen-key [domain] Generate a DKIM key pair")
+	fmt.Println("  backup <file>    Backup database and blobs to a tarball")
+	fmt.Println("  restore <file>   Restore database and blobs from a tarball")
 	fmt.Println("  audit            Check configuration and DNS")
 	fmt.Println("  help             Show this help")
 }

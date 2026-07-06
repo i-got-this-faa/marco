@@ -75,8 +75,11 @@ func (u *User) DeleteMailbox(name string) error {
 
 // RenameMailbox renames a mailbox.
 func (u *User) RenameMailbox(existingName, newName string) error {
-	// For MVP, rename is not fully supported. Return not supported error.
-	return backend.ErrNoSuchMailbox
+	m, err := storage.GetMailbox(context.TODO(), u.db, u.userID, existingName)
+	if err != nil {
+		return err
+	}
+	return storage.RenameMailbox(context.TODO(), u.db, m.ID, newName)
 }
 
 // Logout is called when the user logs out.

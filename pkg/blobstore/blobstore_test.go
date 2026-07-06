@@ -114,10 +114,10 @@ func TestFSStoreCapabilities(t *testing.T) {
 		t.Error("FSStore should support streaming")
 	}
 	if !c.RangeRead {
-		t.Error("FSStore should support range read")
+		t.Error("FSStore should support range reads")
 	}
-	if c.Checksums {
-		t.Error("FSStore should NOT support checksums")
+	if !c.Checksums {
+		t.Error("FSStore now supports checksums (content-addressed dedup)")
 	}
 }
 
@@ -141,7 +141,7 @@ func TestSQLiteStorePutGet(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER)`)
+	_, err = db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER, refcount INTEGER NOT NULL DEFAULT 1)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestSQLiteStorePutGet(t *testing.T) {
 
 func TestSQLiteStoreExists(t *testing.T) {
 	db, _ := sql.Open("sqlite", ":memory:")
-	db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER)`)
+	db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER, refcount INTEGER NOT NULL DEFAULT 1)`)
 	defer db.Close()
 
 	s := NewSQLiteStore(db)
@@ -186,7 +186,7 @@ func TestSQLiteStoreExists(t *testing.T) {
 
 func TestSQLiteStoreDelete(t *testing.T) {
 	db, _ := sql.Open("sqlite", ":memory:")
-	db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER)`)
+	db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER, refcount INTEGER NOT NULL DEFAULT 1)`)
 	defer db.Close()
 
 	s := NewSQLiteStore(db)
@@ -204,7 +204,7 @@ func TestSQLiteStoreDelete(t *testing.T) {
 
 func TestSQLiteStoreCapabilities(t *testing.T) {
 	db, _ := sql.Open("sqlite", ":memory:")
-	db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER)`)
+	db.Exec(`CREATE TABLE blobs (key TEXT PRIMARY KEY, data BLOB, size INTEGER, created_at INTEGER, refcount INTEGER NOT NULL DEFAULT 1)`)
 	defer db.Close()
 
 	s := NewSQLiteStore(db)

@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+// Flag bits for message flags (matching IMAP flag semantics).
+const (
+	FlagSeen     = 1 << iota
+	FlagAnswered
+	FlagFlagged
+	FlagDeleted
+	FlagDraft
+)
+
 // InsertMessage stores a new message in a mailbox. It returns the
 // message ID and the assigned UID.
 func InsertMessage(ctx context.Context, db *sql.DB, mailboxID int64, blobKey string, size int64,
@@ -15,9 +24,10 @@ func InsertMessage(ctx context.Context, db *sql.DB, mailboxID int64, blobKey str
 	err = withTx(ctx, db, func(tx *sql.Tx) error {
 		// Assign next UID for this mailbox.
 		var maxUID sql.NullInt64
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COALESCE(MAX(uid), 0) FROM messages WHERE mailbox_id = ?`, mailboxID,
-		).Scan(&maxUID); err != nil {
+		err := tx.QueryRowContext(ctx,
+			`SELECT MAX(uid) FROM messages WHERE mailbox_id = ?`, mailboxID,
+		).Scan(&maxUID)
+		if err != nil {
 			return fmt.Errorf("storage: max uid: %w", err)
 		}
 		uid = uint32(maxUID.Int64) + 1
@@ -32,10 +42,7 @@ func InsertMessage(ctx context.Context, db *sql.DB, mailboxID int64, blobKey str
 			return fmt.Errorf("storage: insert message: %w", err)
 		}
 		msgID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("storage: insert lastid: %w", err)
-		}
-		return nil
+		return err
 	})
 	return
 }
@@ -53,7 +60,7 @@ func GetMessageByUID(ctx context.Context, db *sql.DB, mailboxID int64, uid uint3
 		return nil, fmt.Errorf("storage: message not found: %w", ErrNotFound)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("storage: get message: %w", err)
+		return nil, fmt.Errorf("storage: get message by uid: %w", err)
 	}
 	return m, nil
 }
@@ -86,7 +93,7 @@ func ListMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, s
 		q += ` AND uid > ?`
 		args = append(args, sinceUID)
 	}
-	q += ` ORDER BY uid DESC`
+	q += ` ORDER BY uid ASC`
 	if limit > 0 {
 		q += ` LIMIT ?`
 		args = append(args, limit)
@@ -107,10 +114,7 @@ func ListMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, s
 		}
 		msgs = append(msgs, m)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("storage: list messages rows: %w", err)
-	}
-	return msgs, nil
+	return msgs, rows.Err()
 }
 
 // UpdateFlags sets or clears message flags using a bitmask. Bits set in
@@ -148,7 +152,9 @@ func MoveMessage(ctx context.Context, db *sql.DB, messageID, destMailboxID int64
 
 // DeleteMessage removes a message by ID.
 func DeleteMessage(ctx context.Context, db *sql.DB, messageID int64) error {
-	res, err := db.ExecContext(ctx, `DELETE FROM messages WHERE id = ?`, messageID)
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM messages WHERE id = ?`, messageID,
+	)
 	if err != nil {
 		return fmt.Errorf("storage: delete message: %w", err)
 	}
@@ -178,7 +184,7 @@ func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() // no-op if committed
+	defer tx.Rollback()
 
 	if err := fn(tx); err != nil {
 		return err
@@ -194,7 +200,7 @@ func ListMessageUIDs(ctx context.Context, db *sql.DB, mailboxID int64) ([]uint32
 		mailboxID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("storage: list message uids: %w", err)
+		return nil, fmt.Errorf("storage: list uids: %w", err)
 	}
 	defer rows.Close()
 
@@ -202,9 +208,23 @@ func ListMessageUIDs(ctx context.Context, db *sql.DB, mailboxID int64) ([]uint32
 	for rows.Next() {
 		var uid uint32
 		if err := rows.Scan(&uid); err != nil {
-			return nil, fmt.Errorf("storage: list message uids scan: %w", err)
+			return nil, fmt.Errorf("storage: list uids scan: %w", err)
 		}
 		uids = append(uids, uid)
 	}
 	return uids, rows.Err()
+}
+
+// ExpungeMailbox deletes all messages in a mailbox that have the FlagDeleted
+// bit set. Returns the number of messages deleted.
+func ExpungeMailbox(ctx context.Context, db *sql.DB, mailboxID int64) (int, error) {
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM messages WHERE mailbox_id = ? AND (flags & ?) != 0`,
+		mailboxID, FlagDeleted,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("storage: expunge mailbox: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }

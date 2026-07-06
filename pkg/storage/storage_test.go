@@ -101,8 +101,8 @@ func TestMigrate(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version != 4 {
-		t.Fatalf("expected user_version=4, got %d", version)
+	if version != 5 {
+		t.Fatalf("expected user_version=5, got %d", version)
 	}
 	// Verify all tables are queryable.
 	expectTables := []string{
@@ -127,9 +127,9 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version != 4 {
-		t.Fatalf("expected user_version=4, got %d", version)
-	}
+	if version != 5 {
+		t.Fatalf("expected user_version=5, got %d", version)
+}
 }
 
 // ---------------------------------------------------------------------------

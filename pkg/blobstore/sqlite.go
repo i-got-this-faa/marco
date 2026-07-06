@@ -8,6 +8,9 @@ import (
 	"io"
 	"time"
 )
+
+// SQLiteStore stores blobs in a SQLite database, using the SHA-256 digest as
+// the content-addressed key for automatic deduplication.
 type SQLiteStore struct {
 	db *sql.DB
 }
@@ -17,22 +20,26 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 	return &SQLiteStore{db: db}
 }
 
-// Put inserts a blob into the database.
+// Put inserts a blob into the database. The key is the SHA-256 digest of the
+// content; duplicate content returns the existing key and increments the
+// reference count.
 func (s *SQLiteStore) Put(ctx context.Context, r io.Reader, metadata map[string]string) (string, int64, error) {
-	data, err := io.ReadAll(r)
+	key, data, size, err := sha256Key(r)
 	if err != nil {
-		return "", 0, fmt.Errorf("blobstore: read: %w", err)
+		return "", 0, err
 	}
 
-	key := uuidV4()
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO blobs (key, data, size, created_at) VALUES (?, ?, ?, ?)`,
-		key, data, len(data), time.Now().Unix(),
-	)
+	// Upsert: insert with refcount=1, or increment refcount on duplicate.
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO blobs (key, data, size, created_at, refcount)
+		VALUES (?, ?, ?, ?, 1)
+		ON CONFLICT(key) DO UPDATE SET refcount = refcount + 1
+	`, key, data, len(data), time.Now().Unix())
 	if err != nil {
-		return "", 0, fmt.Errorf("blobstore: insert: %w", err)
+		return "", 0, fmt.Errorf("blobstore: upsert: %w", err)
 	}
-	return key, int64(len(data)), nil
+
+	return key, size, nil
 }
 
 // Get retrieves a blob from the database.
@@ -50,9 +57,20 @@ func (s *SQLiteStore) Get(ctx context.Context, key string) (io.ReadCloser, error
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-// Delete removes a blob from the database.
+// Delete decrements the reference count and removes the blob when the count
+// reaches zero.
 func (s *SQLiteStore) Delete(ctx context.Context, key string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM blobs WHERE key = ?`, key)
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE blobs SET refcount = refcount - 1 WHERE key = ?`, key,
+	)
+	if err != nil {
+		return fmt.Errorf("blobstore: decrement refcount: %w", err)
+	}
+
+	// Remove rows with refcount <= 0.
+	_, err = s.db.ExecContext(ctx,
+		`DELETE FROM blobs WHERE key = ? AND refcount <= 0`, key,
+	)
 	if err != nil {
 		return fmt.Errorf("blobstore: delete: %w", err)
 	}
@@ -76,7 +94,7 @@ func (s *SQLiteStore) Capabilities() Capabilities {
 	return Capabilities{
 		Streaming: false,
 		RangeRead: false,
-		Checksums: false,
+		Checksums: true,
 	}
 }
 

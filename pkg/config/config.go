@@ -17,6 +17,7 @@ type Config struct {
 	Storage   StorageConfig `toml:"storage"`
 	SMTP      SMTPConfig    `toml:"smtp"`
 	IMAP      IMAPConfig    `toml:"imap"`
+	POP3      POP3Config    `toml:"pop3"`
 	TLS       TLSConfig     `toml:"tls"`
 	ACME      ACMEConfig    `toml:"acme"`
 	Auth      AuthConfig    `toml:"auth"`
@@ -51,6 +52,13 @@ type SMTPConfig struct {
 type IMAPConfig struct {
 	ListenAddr  string `toml:"listen_addr"`
 	ImapsAddr   string `toml:"imaps_addr"`
+}
+
+// POP3Config controls the POP3 listener(s).
+type POP3Config struct {
+	ListenAddr string `toml:"listen_addr"`
+	POP3sAddr  string `toml:"pop3s_addr"`
+	APOPSecret string `toml:"apop_secret"`
 }
 
 // TLSConfig controls TLS certificate paths.
@@ -168,6 +176,9 @@ func defaultConfig() *Config {
 		IMAP: IMAPConfig{
 			ListenAddr: ":143",
 			ImapsAddr:  ":993",
+		},
+		POP3: POP3Config{
+			ListenAddr: ":110",
 		},
 		TLS: TLSConfig{},
 		ACME: ACMEConfig{

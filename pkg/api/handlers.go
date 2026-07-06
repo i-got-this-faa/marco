@@ -2,16 +2,24 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
+	"github.com/i-got-this-faa/marco/pkg/config"
 	"github.com/i-got-this-faa/marco/pkg/dkim"
+	"github.com/i-got-this-faa/marco/pkg/metrics"
 	"github.com/i-got-this-faa/marco/pkg/queue"
 	"github.com/i-got-this-faa/marco/pkg/storage"
 )
@@ -24,7 +32,11 @@ type handlers struct {
 	qm            *queue.Manager
 	am            *auth.Manager
 	dk            *dkim.Signer
+	metrics       *metrics.Registry
+	promHandler   http.Handler
 	sessionExpiry time.Duration
+	dkimPrivKeyPath string
+	dkimCfg       config.DKIMConfig
 }
 
 // response is the standard JSON envelope.
@@ -278,6 +290,106 @@ func (h *handlers) handleStats(w http.ResponseWriter, r *http.Request) {
 		"aliases": aliasCount,
 		"queue":   queueSize,
 	}})
+}
+
+func (h *handlers) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, response{Error: "invalid user id"})
+		return
+	}
+
+	var req struct {
+		Email    *string `json:"email"`
+		Password *string `json:"password"`
+		IsActive *bool   `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{Error: "invalid request"})
+		return
+	}
+
+	// Hash password if provided.
+	var passwordHash *string
+	if req.Password != nil {
+		hash, err := auth.HashPassword(*req.Password)
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, response{Error: err.Error()})
+			return
+		}
+		passwordHash = &hash
+	}
+
+	if err := storage.UpdateUser(r.Context(), h.db, id, req.Email, passwordHash, req.IsActive); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, response{Error: "user not found"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, response{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response{OK: true, Data: map[string]interface{}{"id": id}})
+}
+
+func (h *handlers) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, response{Error: "invalid user id"})
+		return
+	}
+
+	if err := storage.DeleteUser(r.Context(), h.db, id); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, response{Error: "user not found"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, response{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response{OK: true})
+}
+
+func (h *handlers) handleDKIMRotate(w http.ResponseWriter, r *http.Request) {
+	if h.dkimPrivKeyPath == "" {
+		writeJSON(w, http.StatusBadRequest, response{Error: "DKIM not configured"})
+		return
+	}
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{Error: "key generation failed"})
+		return
+	}
+
+	privPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	if err := os.WriteFile(h.dkimPrivKeyPath, privPEM, 0600); err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{Error: "failed to write key"})
+		return
+	}
+
+	signer := dkim.NewSigner(h.dkimCfg.Domain, h.dkimCfg.Selector, key)
+	h.dk = signer
+
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{Error: "failed to marshal public key"})
+		return
+	}
+	dnsRecord := fmt.Sprintf("v=DKIM1; k=rsa; p=%x", pubDER)
+
+	writeJSON(w, http.StatusOK, response{OK: true, Data: map[string]interface{}{
+		"dns_record": dnsRecord,
+		"selector":   h.dkimCfg.Selector,
+		"domain":     h.dkimCfg.Domain,
+	}})
+}
+
+func (h *handlers) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	h.promHandler.ServeHTTP(w, r)
 }
 
 

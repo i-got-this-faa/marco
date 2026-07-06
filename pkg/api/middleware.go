@@ -10,6 +10,7 @@ import (
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
 	"github.com/i-got-this-faa/marco/pkg/ratelimit"
+	"github.com/i-got-this-faa/marco/pkg/util"
 )
 
 // requireAuth returns a handler that checks for a valid Bearer token.
@@ -53,11 +54,18 @@ func requireAuthWithDB(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 		next(w, r.WithContext(ctx))
 	}
 }
-
 // withMiddleware wraps a handler with logging, recovery, and CORS.
 func withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		ctx := r.Context()
+
+		// Attach a correlation ID if one is not already present.
+		if id := util.CorrelationIDFromContext(ctx); id == "" {
+			ctx = util.NewContextWithCID(ctx)
+			r = r.WithContext(ctx)
+		}
+		cid := util.CorrelationIDFromContext(ctx)
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -70,7 +78,7 @@ func withMiddleware(next http.Handler) http.Handler {
 
 		defer func() {
 			if rec := recover(); rec != nil {
-				slog.Error("panic", "path", r.URL.Path, "recover", rec)
+				slog.Error("panic", "path", r.URL.Path, "recover", rec, "correlation_id", cid)
 				writeJSON(w, http.StatusInternalServerError, response{Error: "internal error"})
 			}
 		}()
@@ -81,6 +89,7 @@ func withMiddleware(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"duration", time.Since(start).String(),
+			"correlation_id", cid,
 		)
 	})
 }

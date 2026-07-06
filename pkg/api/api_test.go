@@ -13,6 +13,7 @@ import (
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
 	"github.com/i-got-this-faa/marco/pkg/config"
+	"github.com/i-got-this-faa/marco/pkg/metrics"
 	"github.com/i-got-this-faa/marco/pkg/storage"
 	_ "modernc.org/sqlite"
 )
@@ -47,7 +48,8 @@ func newTestFixture(t *testing.T) *testFixture {
 	t.Helper()
 	db := setupTestDB(t)
 	am := auth.NewManager(db)
-	router := withMiddleware(NewRouter(db, nil, am, nil, 24*time.Hour)) // qm/dk are unused by current handlers
+	m := metrics.NewRegistry()
+	router := withMiddleware(NewRouter(db, nil, am, nil, 24*time.Hour, m, config.DKIMConfig{}, ""))
 	return &testFixture{db: db, am: am, router: router}
 }
 
@@ -567,8 +569,9 @@ func TestFullAPIFlow(t *testing.T) {
 func TestNewServer(t *testing.T) {
 	db := setupTestDB(t)
 	am := auth.NewManager(db)
+	m := metrics.NewRegistry()
 	cfg := &config.AdminConfig{ListenAddr: ":9999"}
-	srv := NewServer(cfg, db, nil, am, nil, nil)
+	srv := NewServer(cfg, db, nil, am, nil, nil, m, config.DKIMConfig{}, "")
 
 	if srv == nil {
 		t.Fatal("NewServer returned nil")

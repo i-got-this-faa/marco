@@ -1,6 +1,7 @@
 package blobstore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -85,29 +86,34 @@ func (s *S3Store) objectKey(key string) string {
 	return s.prefix + key
 }
 
-// Put uploads a blob to S3 and returns a UUID v4 key, the number of bytes
-// written, and any error encountered. Optional metadata is stored as S3
-// user-defined metadata (x-amz-meta-* headers).
+// Put uploads a blob to S3 using the SHA-256 digest as the key, providing
+// content-addressed dedup. Returns the hex digest key, number of bytes
+// written, and any error encountered.
 func (s *S3Store) Put(ctx context.Context, r io.Reader, metadata map[string]string) (string, int64, error) {
-	key := uuidV4()
-	cr := &countingReader{r: r}
-
-	input := &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(s.objectKey(key)),
-		Body:   cr,
+	key, data, size, err := sha256Key(r)
+	if err != nil {
+		return "", 0, err
 	}
 
+	// Check existence — quick dedup.
+	exists, err := s.Exists(ctx, key)
+	if err == nil && exists {
+		return key, size, nil
+	}
+
+	input := &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(s.objectKey(key)),
+		Body:          bytes.NewReader(data),
+		ContentLength: aws.Int64(size),
+	}
 	if len(metadata) > 0 {
 		input.Metadata = metadata
 	}
-
-	_, err := s.client.PutObject(ctx, input)
-	if err != nil {
+	if _, err := s.client.PutObject(ctx, input); err != nil {
 		return "", 0, fmt.Errorf("blobstore: s3 put: %w", err)
 	}
-
-	return key, cr.count, nil
+	return key, size, nil
 }
 
 // Get returns a reader for the blob identified by key. The caller MUST

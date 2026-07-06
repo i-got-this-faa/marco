@@ -148,4 +148,8 @@ CREATE TABLE IF NOT EXISTS dmarc_results (
 CREATE INDEX IF NOT EXISTS idx_dmarc_results_domain_unsent ON dmarc_results(from_domain, report_sent);
 `,
 	},
+	{
+		version: 5,
+		ddl: `ALTER TABLE blobs ADD COLUMN refcount INTEGER NOT NULL DEFAULT 1;`,
+	},
 }

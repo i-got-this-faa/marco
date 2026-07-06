@@ -133,3 +133,18 @@ func DeleteMailbox(ctx context.Context, db *sql.DB, mailboxID int64) error {
 	mailboxCache.Delete(mailboxCacheKey{userID: m.UserID, name: m.Name})
 	return nil
 }
+
+// RenameMailbox renames a mailbox.
+func RenameMailbox(ctx context.Context, db *sql.DB, mailboxID int64, newName string) error {
+	res, err := db.ExecContext(ctx, `UPDATE mailboxes SET name = ? WHERE id = ?`, newName, mailboxID)
+	if err != nil {
+		return fmt.Errorf("storage: rename mailbox: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("storage: rename mailbox: %w", ErrNotFound)
+	}
+	// Invalidate cache.
+	mailboxCache.Clear()
+	return nil
+}

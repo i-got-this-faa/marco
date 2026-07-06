@@ -1,7 +1,10 @@
 package metrics
 
 import (
+	"net/http"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/expfmt"
 )
 
 // Registry wraps Prometheus metric collectors for the mail server.
@@ -87,4 +90,26 @@ func NewRegistry() *Registry {
 	f.MustRegister(r.ActiveConnections)
 
 	return r
+}
+
+// Gatherer returns the prometheus.Gatherer for this registry.
+func (r *Registry) Gatherer() prometheus.Gatherer {
+	return r.registerer.(prometheus.Gatherer)
+}
+
+// HTTPHandler returns an http.Handler that serves Prometheus-formatted metrics.
+func (r *Registry) HTTPHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mfs, err := r.Gatherer().Gather()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		for _, mf := range mfs {
+			if _, err := expfmt.MetricFamilyToText(w, mf); err != nil {
+				return
+			}
+		}
+	})
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/i-got-this-faa/marco/pkg/api"
 	"github.com/i-got-this-faa/marco/pkg/auth"
@@ -25,6 +25,7 @@ import (
 	"github.com/i-got-this-faa/marco/pkg/smtp"
 	"github.com/i-got-this-faa/marco/pkg/storage"
 	"github.com/i-got-this-faa/marco/pkg/tls"
+	"github.com/i-got-this-faa/marco/pkg/pop3"
 	"github.com/i-got-this-faa/marco/pkg/util"
 )
 
@@ -146,7 +147,7 @@ func Run() {
 	smtpSrv := smtp.NewServer(&cfg.SMTP, db, blob, qm, am, dk, m, tlsCfg)
 	imapBe := imap.NewBackend(db, blob, am)
 	imapSrv := imap.NewServer(&cfg.IMAP, imapBe, tlsCfg)
-	apiSrv := api.NewServer(&cfg.Admin, db, qm, am, dk, tlsCfg)
+	apiSrv := api.NewServer(&cfg.Admin, db, qm, am, dk, tlsCfg, m, cfg.DKIM, cfg.DKIM.PrivateKeyPath)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -188,6 +189,31 @@ func Run() {
 	startListener("imap", cfg.IMAP.ListenAddr, imapSrv)
 	startListener("imaps", cfg.IMAP.ImapsAddr, imapSrv)
 
+	// POP3 listeners.
+	var pop3Srv *pop3.Server
+	if cfg.POP3.ListenAddr != "" || cfg.POP3.POP3sAddr != "" {
+		pop3Srv = pop3.NewServer(&cfg.POP3, db, blob, am, tlsCfg)
+		startListener("pop3", cfg.POP3.ListenAddr, pop3Srv)
+	}
+	if cfg.POP3.POP3sAddr != "" {
+		// For POP3S, we need to use TLS-wrapped listener.
+		// The Server.ServeTLS method wraps the listener.
+		l, err := net.Listen(listenNetwork(cfg.IPVersion), cfg.POP3.POP3sAddr)
+		if err != nil {
+			slog.Error("failed to listen", "service", "pop3s", "addr", cfg.POP3.POP3sAddr, "error", err)
+			os.Exit(1)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slog.Info("listening", "service", "pop3s", "addr", l.Addr())
+			if err := pop3Srv.ServeTLS(l); err != nil {
+				slog.Error("serve stopped", "service", "pop3s", "error", err)
+			}
+		}()
+	}
+
+
 	// Admin HTTP API server (separate Serve pattern).
 	if cfg.Admin.ListenAddr != "" {
 		wg.Add(1)
@@ -219,33 +245,68 @@ func Run() {
 			}
 		}()
 	}
-
-	// Wait for shutdown signal.
+	// Wait for shutdown signal or SIGHUP for config reload.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-sigCh
-	slog.Info("shutting down", "signal", sig)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+loop:
+	for sig := range sigCh {
+		switch sig {
+		case syscall.SIGHUP:
+			if err := reloadConfig(cfg); err != nil {
+				slog.Error("config reload failed", "error", err)
+			} else {
+				slog.Info("configuration reloaded")
+			}
+		default:
+			slog.Info("shutting down", "signal", sig)
+			break loop
+		}
+	}
 	cancel()
+}
 
-	// Graceful shutdown: stop queue manager first (no new deliveries).
-	qm.Stop()
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-
-	// Shutdown SMTP server (waits for active connections).
-	if err := smtpSrv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("smtp shutdown error", "error", err)
+// reloadConfig reloads the configuration file and applies live-safe changes.
+// Settings that require a full restart are logged as warnings.
+func reloadConfig(cfg *config.Config) error {
+	newCfg, err := config.Load(config.DefaultPath())
+	if err != nil {
+		return fmt.Errorf("reload: %w", err)
 	}
 
-	// Shutdown IMAP server.
-	imapSrv.Close()
-
-	// Shutdown admin API.
-	if err := apiSrv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("admin api shutdown error", "error", err)
+	// Apply live-safe changes.
+	if newCfg.Logging.Level != cfg.Logging.Level ||
+		newCfg.Logging.Format != cfg.Logging.Format {
+		if err := util.InitLogging(newCfg.Logging.Level, newCfg.Logging.Format); err != nil {
+			slog.Error("reload: logging reinit failed", "error", err)
+		} else {
+			slog.Info("reload: logging updated")
+		}
 	}
 
-	wg.Wait()
-	slog.Info("server shut down")
+	// Log warnings for settings that need restart.
+	checkRestart := []struct {
+		name  string
+		old   interface{}
+		new   interface{}
+	}{
+		{"smtp.listen_addr", cfg.SMTP.ListenAddr, newCfg.SMTP.ListenAddr},
+		{"imap.listen_addr", cfg.IMAP.ListenAddr, newCfg.IMAP.ListenAddr},
+		{"pop3.listen_addr", cfg.POP3.ListenAddr, newCfg.POP3.ListenAddr},
+		{"admin.listen_addr", cfg.Admin.ListenAddr, newCfg.Admin.ListenAddr},
+		{"storage.path", cfg.Storage.Path, newCfg.Storage.Path},
+		{"storage.blob_backend", cfg.Storage.BlobBackend, newCfg.Storage.BlobBackend},
+		{"tls.cert_file", cfg.TLS.CertFile, newCfg.TLS.CertFile},
+		{"tls.key_file", cfg.TLS.KeyFile, newCfg.TLS.KeyFile},
+	}
+	for _, c := range checkRestart {
+		if c.old != c.new {
+			slog.Warn("reload: setting changed — full restart required",
+				"setting", c.name, "old", c.old, "new", c.new,
+			)
+		}
+	}
+
+	*cfg = *newCfg
+	return nil
 }
