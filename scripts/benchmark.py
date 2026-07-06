@@ -22,6 +22,7 @@ Environment:
 """
 
 import argparse
+import base64
 import contextlib
 import os
 import socket
@@ -90,10 +91,10 @@ def send_line(sock: socket.socket, line: bytes) -> None:
 @dataclass
 class SmtpResult:
     senders: int
-    duration: float
-    msg_size: int
-    errors: int = 0
+    duration: float = 0.0
+    msg_size: int = 0
     latencies: list[float] = field(default_factory=list)
+    errors: int = 0
 
 
 def bench_smtp(
@@ -124,7 +125,6 @@ def bench_smtp(
         recv_until(sock)
 
         if auth:
-            import base64
             email, password = auth
             send_line(sock, b"AUTH LOGIN")
             recv_until(sock)
@@ -135,6 +135,16 @@ def bench_smtp(
     else:
         send_line(sock, b"EHLO bench")
         recv_until(sock)
+
+        if auth:
+
+            email, password = auth
+            send_line(sock, b"AUTH LOGIN")
+            recv_until(sock)
+            send_line(sock, base64.b64encode(email.encode()))
+            recv_until(sock)
+            send_line(sock, base64.b64encode(password.encode()))
+            recv_until(sock)
 
     result = SmtpResult(senders=count, msg_size=msg_size)
     msg = make_message(from_addr, to_addr, msg_size)
