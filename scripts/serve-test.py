@@ -164,7 +164,8 @@ SCHEMA_SQL = [
         key TEXT PRIMARY KEY,
         data BLOB NOT NULL,
         size INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        refcount INTEGER NOT NULL DEFAULT 1
     );
     """,
     # Migration 2 — greylist
@@ -211,7 +212,7 @@ SCHEMA_SQL = [
         created_at INTEGER NOT NULL,
         UNIQUE(domain, selector)
     );""",
-    # Migration 5 — refcount on blobs (ALTER TABLE already in v1 schema above)
+    # Migration 5 — refcount column included directly in blobs DDL above (line 168)
 ]
 
 # ------------------------------------------------------------------
@@ -329,11 +330,20 @@ def create_seeded_db(db_path: Path, binary: str, admin_email: str,
         # Mark schema as at latest version so the Go server skips migrations.
         cur.execute("PRAGMA user_version = 5")
 
+        # Create system user (id=0) and OUTBOUND mailbox for outbound delivery.
+        now = int(time.time())
+        cur.execute(
+            "INSERT OR IGNORE INTO users (id, email, password_hash, created_at) VALUES (0, 'system@outbound.local', '', ?)",
+            (now,),
+        )
+        cur.execute(
+            "INSERT OR IGNORE INTO mailboxes (user_id, name) VALUES (0, 'OUTBOUND')",
+        )
+
         # Pre-compute password hashes.
         pw_hash = hash_password(binary, admin_password)
 
         # Insert admin user (must match Marco's create flow).
-        now = int(time.time())
         cur.execute(
             "INSERT INTO users (email, password_hash, created_at, is_active) VALUES (?, ?, ?, 1)",
             (admin_email, pw_hash, now),

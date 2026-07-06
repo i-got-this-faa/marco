@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -13,6 +15,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/i-got-this-faa/marco/pkg/api"
 	"github.com/i-got-this-faa/marco/pkg/auth"
@@ -41,6 +44,27 @@ func listenNetwork(ipVersion string) string {
 	default:
 		return "tcp"
 	}
+}
+
+// ensureOutboundMailbox creates the system user (id=0) and OUTBOUND mailbox
+// used for outbound delivery routing and NDR generation. Safe to call on
+// every startup; uses INSERT OR IGNORE / id=0 override via raw SQL because
+// sqlite AUTOINCREMENT still allows explicit zero ids.
+func ensureOutboundMailbox(db *sql.DB) error {
+	ctx := context.Background()
+	// Create system user with explicit id=0 if not present.
+	_, err := db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO users (id, email, password_hash, created_at) VALUES (0, 'system@outbound.local', '', ?)`,
+		time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("create system user: %w", err)
+	}
+	// Create OUTBOUND mailbox for the system user if not present.
+	_, err = storage.CreateMailbox(ctx, db, 0, "OUTBOUND")
+	if err != nil && !errors.Is(err, storage.ErrAlreadyExists) {
+		return fmt.Errorf("create outbound mailbox: %w", err)
+	}
+	return nil
 }
 // Run is the main entry point. It loads configuration, initializes
 // all services, starts listeners, and blocks until a shutdown signal.
@@ -80,6 +104,13 @@ func Run() {
 
 	if err := storage.Migrate(db); err != nil {
 		slog.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+
+	// Ensure the system user (id=0) and OUTBOUND mailbox exist
+	// for outbound delivery routing and NDR generation.
+	if err := ensureOutboundMailbox(db); err != nil {
+		slog.Error("failed to set up outbound mailbox", "error", err)
 		os.Exit(1)
 	}
 
