@@ -1,0 +1,75 @@
+# Marco mail server — configuration
+#
+# Copy this file to /etc/marco/config.toml (or set $MARCO_CONFIG)
+# and edit to match your setup.
+#
+# Sections not present take their default values at startup.
+
+hostname = "mail.example.com"
+domains = ["example.com"]
+
+[storage]
+# SQLite database path.
+path = "/var/lib/marco/marco.db"
+# Blob backend: "filesystem" or "sqlite".
+blob_backend = "filesystem"
+# Path for filesystem blobs (ignored when blob_backend = "sqlite").
+blob_path = "/var/lib/marco/blobs"
+
+[smtp]
+# SMTP port 25 — plain and STARTTLS.
+listen_addr = "0.0.0.0:25"
+# Submission port 587 — always requires STARTTLS + AUTH.
+submission_addr = "0.0.0.0:587"
+# SMTPS port 465 — implicit TLS.
+submissions_addr = "0.0.0.0:465"
+# Maximum incoming message size in bytes (default 25 MiB).
+max_message_size = 26214400
+# Maximum recipients per envelope (default 100).
+max_recipients = 100
+# Override advertised hostname for this listener (defaults to top-level hostname).
+# hostname = "mx.example.com"
+
+[imap]
+listen_addr = "0.0.0.0:143"
+imaps_addr = "0.0.0.0:993"
+
+[tls]
+# Paths to PEM-encoded certificate and key.
+# When both are empty the server generates a self-signed certificate.
+# When ACME is enabled this section is ignored.
+# cert_file = "/etc/marco/certs/fullchain.pem"
+# key_file  = "/etc/marco/certs/privkey.pem"
+
+[acme]
+# Set true to enable automatic certificates via Let's Encrypt.
+enabled = false
+cache_dir = "/var/lib/marco/acme"
+# Domains to request certificates for.
+# domains = ["mail.example.com"]
+# Contact email for ACME account.
+# email = "admin@example.com"
+
+[auth]
+session_expiry = "24h"
+
+[queue]
+workers = 2
+max_retries = 7
+interval = "5s"
+
+[dkim]
+# Domain for DKIM signatures.
+domain = "example.com"
+# Selector (default TXT record name: <selector>._domainkey.<domain>).
+selector = "default"
+# Path to PEM-encoded RSA private key.
+# Generate with:  go run ./cmd/marco genkey example.com
+# private_key_path = "/etc/marco/dkim/private.pem"
+
+[admin]
+listen_addr = "0.0.0.0:8080"
+
+[logging]
+level = "info"
+format = "json"
