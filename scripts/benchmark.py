@@ -315,6 +315,8 @@ def cmd_smtp(args: argparse.Namespace) -> None:
         msg_size=args.size,
         use_tls=use_tls,
         auth=auth,
+        from_addr=args.from_addr,
+        to_addr=args.to_addr,
     )
     msgs_per_sec = r.senders / r.duration if r.duration > 0 else 0
     mb_per_sec = (r.senders * r.msg_size) / r.duration / 1_000_000 if r.duration > 0 else 0
@@ -373,6 +375,10 @@ def main() -> None:
     p.add_argument("--submission", action="store_true", help="Use submission port with STARTTLS")
     p.add_argument("--auth-email")
     p.add_argument("--auth-password")
+    p.add_argument("--from", dest="from_addr", default="bench@example.com",
+                    help="Sender address (default: bench@example.com)")
+    p.add_argument("--to", dest="to_addr", default="user@example.com",
+                    help="Recipient address (default: user@example.com)")
 
     p = sub.add_parser("pop3", help="POP3 retrieval throughput")
     p.add_argument("--user", required=True)
