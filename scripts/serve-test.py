@@ -418,11 +418,14 @@ def main() -> None:
     bind = args.bind
     for svc in ports:
         ports[svc] = find_free_port(bind, ports[svc])
+    config_toml = make_config(args.hostname, bind, ports, str(db_path))
 
-    # --- Build binary ---
+    # --- Build binary (fresh compile every time) ---
+    binary_path = data_dir / "marco"
+    binary_path.unlink(missing_ok=True)
     print("Building marco ...", file=sys.stderr)
     build_proc = subprocess.run(
-        ["go", "build", "-o", str(data_dir / "marco"), "./cmd/marco"],
+        ["go", "build", "-o", str(binary_path), "./cmd/marco"],
         cwd=SCRIPTS_DIR.parent,
         capture_output=True, text=True,
     )
@@ -431,10 +434,7 @@ def main() -> None:
         print(build_proc.stderr, file=sys.stderr)
         sys.exit(1)
 
-    binary = str(data_dir / "marco")
-
-    # --- Write config ---
-    config_toml = make_config(args.hostname, bind, ports, str(db_path))
+    binary = str(binary_path)
     config_path.write_text(config_toml)
 
     # --- Pre-seed database with users ---
