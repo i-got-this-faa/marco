@@ -7,6 +7,7 @@ type User struct {
 	PasswordHash string `json:"-"`
 	CreatedAt    int64  `json:"created_at"`
 	IsActive     bool   `json:"is_active"`
+	IsAdmin      bool   `json:"is_admin"`
 }
 
 // Mailbox represents a mailbox (folder) for a user.

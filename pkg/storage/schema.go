@@ -148,4 +148,26 @@ CREATE TABLE IF NOT EXISTS dmarc_results (
 CREATE INDEX IF NOT EXISTS idx_dmarc_results_domain_unsent ON dmarc_results(from_domain, report_sent);
 `,
 	},
+	{
+		version: 5,
+		ddl: `
+ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+UPDATE users SET is_admin = 1;
+`,
+	},
+	{
+		version: 6,
+		ddl: `
+CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT,
+    email TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(user_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);
+`,
+	},
 }

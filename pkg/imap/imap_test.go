@@ -64,7 +64,7 @@ func setupTest(t *testing.T) (*Backend, *auth.Manager, *sql.DB) {
 func createTestUser(t *testing.T, am *auth.Manager, email, password string) int64 {
 	t.Helper()
 	ctx := context.Background()
-	id, err := am.CreateUser(ctx, email, password)
+	id, err := am.CreateUser(ctx, email, password, false)
 	if err != nil {
 		t.Fatalf("CreateUser(%q): %v", email, err)
 	}
@@ -169,7 +169,7 @@ func TestBackendLoginInactiveUser(t *testing.T) {
 	id := createTestUser(t, am, testEmail, testPassword)
 
 	inactive := false
-	if err := storage.UpdateUser(ctx, db, id, nil, nil, &inactive); err != nil {
+	if err := storage.UpdateUser(ctx, db, id, nil, nil, &inactive, nil); err != nil {
 		t.Fatalf("UpdateUser deactivate: %v", err)
 	}
 

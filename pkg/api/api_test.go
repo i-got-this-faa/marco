@@ -47,7 +47,7 @@ func newTestFixture(t *testing.T) *testFixture {
 	t.Helper()
 	db := setupTestDB(t)
 	am := auth.NewManager(db)
-	router := withMiddleware(NewRouter(db, nil, am, nil, 24*time.Hour)) // qm/dk are unused by current handlers
+	router := withMiddleware(NewRouter(db, nil, nil, am, nil, 24*time.Hour)) // blob/qm/dk are unused by current handlers
 	return &testFixture{db: db, am: am, router: router}
 }
 
@@ -87,7 +87,7 @@ func readResponse(t *testing.T, body *bytes.Buffer) response {
 // createTestUser creates a user directly via auth for use in login tests.
 func createTestUser(t *testing.T, am *auth.Manager, email, password string) int64 {
 	t.Helper()
-	id, err := am.CreateUser(context.Background(), email, password)
+	id, err := am.CreateUser(context.Background(), email, password, true)
 	if err != nil {
 		t.Fatalf("CreateUser(%q): %v", email, err)
 	}
@@ -568,7 +568,7 @@ func TestNewServer(t *testing.T) {
 	db := setupTestDB(t)
 	am := auth.NewManager(db)
 	cfg := &config.AdminConfig{ListenAddr: ":9999"}
-	srv := NewServer(cfg, db, nil, am, nil, nil)
+	srv := NewServer(cfg, db, nil, nil, am, nil, nil)
 
 	if srv == nil {
 		t.Fatal("NewServer returned nil")

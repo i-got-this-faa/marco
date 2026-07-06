@@ -83,7 +83,7 @@ func TestManagerAuthenticate(t *testing.T) {
 	m := NewManager(db)
 
 	// Create a user.
-	userID, err := m.CreateUser(context.Background(), "test@example.com", "secure-password")
+	userID, err := m.CreateUser(context.Background(), "test@example.com", "secure-password", false)
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
@@ -117,11 +117,11 @@ func TestManagerAuthenticateInactiveUser(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
 
-	userID, _ := m.CreateUser(context.Background(), "user@example.com", "password")
+	userID, _ := m.CreateUser(context.Background(), "user@example.com", "password", false)
 
 	// Deactivate the user.
 	active := false
-	if err := storage.UpdateUser(context.Background(), db, userID, nil, nil, &active); err != nil {
+	if err := storage.UpdateUser(context.Background(), db, userID, nil, nil, &active, nil); err != nil {
 		t.Fatalf("UpdateUser failed: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestManagerCreateUser(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
 
-	userID, err := m.CreateUser(context.Background(), "new@example.com", "strong-password")
+	userID, err := m.CreateUser(context.Background(), "new@example.com", "strong-password", false)
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestManagerCreateUser(t *testing.T) {
 	}
 
 	// Duplicate email should fail.
-	_, err = m.CreateUser(context.Background(), "new@example.com", "another-password")
+	_, err = m.CreateUser(context.Background(), "new@example.com", "another-password", false)
 	if err == nil {
 		t.Fatal("expected error for duplicate email")
 	}
@@ -171,7 +171,7 @@ func TestCreateSession(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Create a user first.
-	uid, _ := storage.CreateUser(context.Background(), db, "session@example.com", "hash")
+	uid, _ := storage.CreateUser(context.Background(), db, "session@example.com", "hash", false)
 
 	token, err := CreateSession(context.Background(), db, uid, time.Hour)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestCreateSession(t *testing.T) {
 
 func TestValidateSession(t *testing.T) {
 	db := setupTestDB(t)
-	uid, _ := storage.CreateUser(context.Background(), db, "validate@example.com", "hash")
+	uid, _ := storage.CreateUser(context.Background(), db, "validate@example.com", "hash", false)
 
 	token, _ := CreateSession(context.Background(), db, uid, time.Hour)
 
@@ -199,7 +199,7 @@ func TestValidateSession(t *testing.T) {
 
 func TestValidateSessionExpired(t *testing.T) {
 	db := setupTestDB(t)
-	uid, _ := storage.CreateUser(context.Background(), db, "expired@example.com", "hash")
+	uid, _ := storage.CreateUser(context.Background(), db, "expired@example.com", "hash", false)
 
 	token, _ := CreateSession(context.Background(), db, uid, -time.Hour) // expired
 
@@ -219,7 +219,7 @@ func TestValidateSessionInvalid(t *testing.T) {
 
 func TestRevokeSession(t *testing.T) {
 	db := setupTestDB(t)
-	uid, _ := storage.CreateUser(context.Background(), db, "revoke@example.com", "hash")
+	uid, _ := storage.CreateUser(context.Background(), db, "revoke@example.com", "hash", false)
 
 	token, _ := CreateSession(context.Background(), db, uid, time.Hour)
 
@@ -236,7 +236,7 @@ func TestRevokeSession(t *testing.T) {
 func TestSMTPAuth(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
-	m.CreateUser(context.Background(), "smtp@example.com", "smtp-password")
+	m.CreateUser(context.Background(), "smtp@example.com", "smtp-password", false)
 
 	server := SMTPAuth(m)
 	if server == nil {
@@ -247,7 +247,7 @@ func TestSMTPAuth(t *testing.T) {
 func TestIMAPAuthAdapter(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
-	m.CreateUser(context.Background(), "imap@example.com", "imap-password")
+	m.CreateUser(context.Background(), "imap@example.com", "imap-password", false)
 
 	fn := AuthAdapter(m)
 	if fn == nil {

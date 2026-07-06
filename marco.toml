@@ -1,0 +1,23 @@
+hostname = "localhost"
+domains = ["localhost", "example.com"]
+
+[storage]
+path = "data/marco.db"
+blob_backend = "sqlite"
+blob_path = "data/blobs"
+
+[smtp]
+listen_addr = "127.0.0.1:2525"
+submission_addr = "127.0.0.1:2587"
+submissions_addr = "127.0.0.1:2465"
+
+[imap]
+listen_addr = "127.0.0.1:1143"
+imaps_addr = "127.0.0.1:1993"
+
+[admin]
+listen_addr = "0.0.0.0:8080"
+
+[logging]
+level = "debug"
+format = "text"

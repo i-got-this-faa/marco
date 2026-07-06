@@ -79,10 +79,20 @@ func GetMessageByID(ctx context.Context, db *sql.DB, msgID int64) (*Message, err
 // ListMessages returns messages in a mailbox, newest first, with optional
 // pagination via sinceUID (exclusive lower bound).
 func ListMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, sinceUID uint32) ([]*Message, error) {
+	return listMessages(ctx, db, mailboxID, limit, sinceUID, 0, false)
+}
+
+// ListMessagesPaginated returns messages in a mailbox, newest first, with
+// LIMIT/OFFSET pagination suitable for a browser UI.
+func ListMessagesPaginated(ctx context.Context, db *sql.DB, mailboxID int64, limit int, offset int) ([]*Message, error) {
+	return listMessages(ctx, db, mailboxID, limit, 0, offset, true)
+}
+
+func listMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, sinceUID uint32, offset int, useOffset bool) ([]*Message, error) {
 	q := `SELECT id, mailbox_id, uid, blob_key, size, flags, internal_date, from_addr, to_addr, subject
 		  FROM messages WHERE mailbox_id = ?`
 	args := []interface{}{mailboxID}
-	if sinceUID > 0 {
+	if !useOffset && sinceUID > 0 {
 		q += ` AND uid > ?`
 		args = append(args, sinceUID)
 	}
@@ -90,6 +100,10 @@ func ListMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, s
 	if limit > 0 {
 		q += ` LIMIT ?`
 		args = append(args, limit)
+	}
+	if useOffset && offset > 0 {
+		q += ` OFFSET ?`
+		args = append(args, offset)
 	}
 
 	rows, err := db.QueryContext(ctx, q, args...)

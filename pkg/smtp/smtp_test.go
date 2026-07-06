@@ -85,7 +85,7 @@ func testBackend(t *testing.T) (*Backend, *sql.DB) {
 	}
 
 	// Create a test user with default mailboxes.
-	_, err = auth.NewManager(db).CreateUser(ctx, "user@test.local", "testpass")
+	_, err = auth.NewManager(db).CreateUser(ctx, "user@test.local", "testpass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

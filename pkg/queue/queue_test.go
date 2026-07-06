@@ -41,7 +41,7 @@ func migrateTestDB(t *testing.T) *sql.DB {
 func ensureUser(t *testing.T, db *sql.DB, email, passwordHash string) int64 {
 	t.Helper()
 	ctx := context.Background()
-	id, err := storage.CreateUser(ctx, db, email, passwordHash)
+	id, err := storage.CreateUser(ctx, db, email, passwordHash, false)
 	if err != nil {
 		t.Fatalf("CreateUser(%q): %v", email, err)
 	}

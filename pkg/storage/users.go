@@ -14,10 +14,10 @@ import (
 var userByEmailCache = cache.New[string, *User](30*time.Second, 5000)
 
 // CreateUser inserts a new user and returns its ID.
-func CreateUser(ctx context.Context, db *sql.DB, email, passwordHash string) (int64, error) {
+func CreateUser(ctx context.Context, db *sql.DB, email, passwordHash string, isAdmin bool) (int64, error) {
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)`,
-		email, passwordHash, time.Now().Unix(),
+		`INSERT INTO users (email, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?)`,
+		email, passwordHash, time.Now().Unix(), isAdmin,
 	)
 	if err != nil {
 		if isConstraintError(err) {
@@ -41,9 +41,9 @@ func GetUserByEmail(ctx context.Context, db *sql.DB, email string) (*User, error
 
 	u := &User{}
 	err := db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, created_at, is_active FROM users WHERE email = ?`,
+		`SELECT id, email, password_hash, created_at, is_active, is_admin FROM users WHERE email = ?`,
 		email,
-	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive)
+	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive, &u.IsAdmin)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("storage: user not found: %w", ErrNotFound)
 	}
@@ -58,9 +58,9 @@ func GetUserByEmail(ctx context.Context, db *sql.DB, email string) (*User, error
 func GetUserByID(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 	u := &User{}
 	err := db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, created_at, is_active FROM users WHERE id = ?`,
+		`SELECT id, email, password_hash, created_at, is_active, is_admin FROM users WHERE id = ?`,
 		id,
-	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive)
+	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive, &u.IsAdmin)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("storage: user not found: %w", ErrNotFound)
 	}
@@ -73,7 +73,7 @@ func GetUserByID(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 // ListUsers returns all users.
 func ListUsers(ctx context.Context, db *sql.DB) ([]*User, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, email, password_hash, created_at, is_active FROM users ORDER BY id`)
+		`SELECT id, email, password_hash, created_at, is_active, is_admin FROM users ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("storage: list users: %w", err)
 	}
@@ -82,7 +82,7 @@ func ListUsers(ctx context.Context, db *sql.DB) ([]*User, error) {
 	var users []*User
 	for rows.Next() {
 		u := &User{}
-		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive, &u.IsAdmin); err != nil {
 			return nil, fmt.Errorf("storage: list users scan: %w", err)
 		}
 		users = append(users, u)
@@ -94,7 +94,7 @@ func ListUsers(ctx context.Context, db *sql.DB) ([]*User, error) {
 }
 
 // UpdateUser selectively updates user fields. Pass nil to leave a field unchanged.
-func UpdateUser(ctx context.Context, db *sql.DB, id int64, email, passwordHash *string, isActive *bool) error {
+func UpdateUser(ctx context.Context, db *sql.DB, id int64, email, passwordHash *string, isActive, isAdmin *bool) error {
 	// Build a dynamic update — only set fields that are non-nil.
 	type setClause struct {
 		expr string
@@ -109,6 +109,9 @@ func UpdateUser(ctx context.Context, db *sql.DB, id int64, email, passwordHash *
 	}
 	if isActive != nil {
 		sets = append(sets, setClause{"is_active = ?", *isActive})
+	}
+	if isAdmin != nil {
+		sets = append(sets, setClause{"is_admin = ?", *isAdmin})
 	}
 	if len(sets) == 0 {
 		return nil
@@ -176,7 +179,7 @@ func GetUsersByEmail(ctx context.Context, db *sql.DB, emails []string) (map[stri
 	}
 
 	query := fmt.Sprintf(
-		`SELECT id, email, password_hash, created_at, is_active FROM users WHERE email IN (%s)`,
+		`SELECT id, email, password_hash, created_at, is_active, is_admin FROM users WHERE email IN (%s)`,
 		strings.Join(placeholders, ","),
 	)
 
@@ -189,7 +192,7 @@ func GetUsersByEmail(ctx context.Context, db *sql.DB, emails []string) (map[stri
 	result := make(map[string]*User, len(emails))
 	for rows.Next() {
 		u := &User{}
-		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.IsActive, &u.IsAdmin); err != nil {
 			return nil, fmt.Errorf("storage: get users by email scan: %w", err)
 		}
 		result[u.Email] = u
