@@ -228,6 +228,7 @@ blob_backend = "sqlite"
 [smtp]
 listen_addr = "{smtp_addr}"
 submission_addr = "{submission_addr}"
+hostname = "{hostname}"
 submissions_addr = ""
 max_message_size = 26214400
 max_recipients = 100

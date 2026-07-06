@@ -40,6 +40,11 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	s.from = from
 	return nil
 }
+// AuthMechanisms returns the supported SASL authentication mechanisms.
+func (s *Session) AuthMechanisms() []string {
+	return []string{"PLAIN"}
+}
+
 // Auth handles the AUTH command for SMTP authentication.
 func (s *Session) Auth(mech string) (sasl.Server, error) {
 	return sasl.NewPlainServer(func(identity, username, password string) error {

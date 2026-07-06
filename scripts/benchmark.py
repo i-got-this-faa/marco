@@ -69,8 +69,8 @@ def tcp_connect(host: str, port: int, timeout: float = 10) -> socket.socket:
     s.settimeout(timeout)
     return s
 
-
 def recv_until(sock: socket.socket, marker: bytes = b"\r\n") -> bytes:
+    """Read until *marker* is seen (single-line SMTP response)."""
     data = b""
     while not data.endswith(marker):
         chunk = sock.recv(4096)
@@ -79,6 +79,32 @@ def recv_until(sock: socket.socket, marker: bytes = b"\r\n") -> bytes:
         data += chunk
     return data
 
+
+def recv_response(sock: socket.socket) -> bytes:
+    """Read a full SMTP response, handling multi-line replies.
+
+    SMTP multi-line: every continuation line has ``NNN-`` and the
+    final line has ``NNN `` (space after the 3-digit code).
+    """
+    data = b""
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+        # Check if the last *complete* line in the buffer (the one
+        # ending with \r\n) has space at position 3.
+        end = data.rfind(b"\r\n")
+        if end >= 0:
+            # Find the start of this line (the \r\n before it, or 0).
+            start = data.rfind(b"\r\n", 0, end)
+            if start >= 0:
+                last_line = data[start + 2:end]
+            else:
+                last_line = data[:end]
+            if len(last_line) >= 4 and last_line[3:4] == b" ":
+                break
+    return data
 
 def send_line(sock: socket.socket, line: bytes) -> None:
     sock.sendall(line + b"\r\n")
@@ -110,41 +136,36 @@ def bench_smtp(
     sock = tcp_connect(ENV["host"], port)
 
     # Read banner.
-    recv_until(sock)
+    recv_response(sock)
 
     if use_tls:
         send_line(sock, b"EHLO bench")
-        recv_until(sock)
+        recv_response(sock)
         send_line(sock, b"STARTTLS")
-        recv_until(sock)
+        recv_response(sock)
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         sock = context.wrap_socket(sock, server_hostname=ENV["host"])
         send_line(sock, b"EHLO bench")
-        recv_until(sock)
+        recv_response(sock)
 
         if auth:
             email, password = auth
-            send_line(sock, b"AUTH LOGIN")
-            recv_until(sock)
-            send_line(sock, base64.b64encode(email.encode()))
-            recv_until(sock)
-            send_line(sock, base64.b64encode(password.encode()))
-            recv_until(sock)
+            # AUTH PLAIN: base64(\0username\0password)
+            plain = b'\x00' + email.encode() + b'\x00' + password.encode()
+            send_line(sock, b'AUTH PLAIN ' + base64.b64encode(plain))
+            recv_response(sock)
     else:
         send_line(sock, b"EHLO bench")
-        recv_until(sock)
+        recv_response(sock)
 
         if auth:
-
             email, password = auth
-            send_line(sock, b"AUTH LOGIN")
-            recv_until(sock)
-            send_line(sock, base64.b64encode(email.encode()))
-            recv_until(sock)
-            send_line(sock, base64.b64encode(password.encode()))
-            recv_until(sock)
+            # AUTH PLAIN: base64(\0username\0password)
+            plain = b'\x00' + email.encode() + b'\x00' + password.encode()
+            send_line(sock, b'AUTH PLAIN ' + base64.b64encode(plain))
+            recv_response(sock)
 
     result = SmtpResult(senders=count, msg_size=msg_size)
     msg = make_message(from_addr, to_addr, msg_size)
@@ -153,14 +174,14 @@ def bench_smtp(
         start = time.perf_counter()
         try:
             send_line(sock, b"MAIL FROM:<" + from_addr.encode() + b">")
-            recv_until(sock)
+            recv_response(sock)
             send_line(sock, b"RCPT TO:<" + to_addr.encode() + b">")
-            recv_until(sock)
+            recv_response(sock)
             send_line(sock, b"DATA")
-            recv_until(sock)
+            recv_response(sock)
             sock.sendall(msg)
             send_line(sock, b".")
-            recv_until(sock)
+            recv_response(sock)
             lat = time.perf_counter() - start
             result.latencies.append(lat)
         except OSError as e:
@@ -175,7 +196,7 @@ def bench_smtp(
 
     send_line(sock, b"QUIT")
     with contextlib.suppress(OSError):
-        recv_until(sock)
+        recv_response(sock)
     sock.close()
 
     return result
@@ -286,11 +307,13 @@ def bench_api_latency(api: MarcoAPI, samples: int = 50) -> list[ApiLatencyResult
 def cmd_smtp(args: argparse.Namespace) -> None:
     port = ENV["submission_port"] if args.submission else ENV["smtp_port"]
     auth = (args.auth_email, args.auth_password) if args.auth_email else None
+    # AUTH requires TLS. Auto-enable TLS when credentials are provided.
+    use_tls = args.submission or auth is not None
     r = bench_smtp(
         port=port,
         count=args.count,
         msg_size=args.size,
-        use_tls=args.submission,
+        use_tls=use_tls,
         auth=auth,
     )
     msgs_per_sec = r.senders / r.duration if r.duration > 0 else 0
