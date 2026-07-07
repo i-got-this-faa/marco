@@ -63,7 +63,7 @@ func (h *handlers) handleListMailboxMessages(w http.ResponseWriter, r *http.Requ
 
 	mbox, err := storage.GetMailboxByID(ctx, h.db, mailboxID)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, response{Error: "mailbox not found"})
 			return
 		}
@@ -106,7 +106,7 @@ func (h *handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 
 	msg, err := storage.GetMessageByID(ctx, h.db, msgID)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, response{Error: "message not found"})
 			return
 		}
@@ -169,7 +169,7 @@ func (h *handlers) handleUpdateFlags(w http.ResponseWriter, r *http.Request) {
 
 	msg, err := storage.GetMessageByID(ctx, h.db, msgID)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, response{Error: "message not found"})
 			return
 		}
@@ -242,7 +242,7 @@ func (h *handlers) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fromAddr := user.Email
-	raw := buildMessage(fromAddr, req.To, req.Subject, req.TextBody, req.HTMLBody, req.InReplyTo, req.References)
+	raw := buildMessage(fromAddr, req.To, req.Subject, req.TextBody, req.HTMLBody, req.InReplyTo, req.References, h.dkimCfg.Domain)
 
 	blobKey, size, err := h.blob.Put(ctx, bytes.NewReader(raw), nil)
 	if err != nil {
@@ -319,10 +319,6 @@ func (h *handlers) handleCreateContact(w http.ResponseWriter, r *http.Request) {
 
 	id, err := storage.CreateContact(ctx, h.db, userID, req.Name, req.Email)
 	if err != nil {
-		if isNotFound(err) {
-			writeJSON(w, http.StatusNotFound, response{Error: "contact not found"})
-			return
-		}
 		if errors.Is(err, storage.ErrAlreadyExists) {
 			writeJSON(w, http.StatusConflict, response{Error: "contact already exists"})
 			return
@@ -348,7 +344,7 @@ func (h *handlers) handleDeleteContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := storage.DeleteContact(ctx, h.db, userID, id); err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, response{Error: "contact not found"})
 			return
 		}
@@ -360,10 +356,10 @@ func (h *handlers) handleDeleteContact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response{OK: true})
 }
 
-func buildMessage(from, to, subject, textBody, htmlBody, inReplyTo, references string) []byte {
+func buildMessage(from, to, subject, textBody, htmlBody, inReplyTo, references, hostname string) []byte {
 	var buf bytes.Buffer
 	now := time.Now().Format(time.RFC1123Z)
-	msgID := fmt.Sprintf("<%d-%s@%s>", time.Now().UnixNano(), from, "polo")
+	msgID := fmt.Sprintf("<%d-%s@%s>", time.Now().UnixNano(), from, hostname)
 
 	buf.WriteString(fmt.Sprintf("Message-ID: %s\r\n", msgID))
 	if inReplyTo != "" {
@@ -411,8 +407,4 @@ func parseIntQuery(r *http.Request, key string, defaultValue int) int {
 		return defaultValue
 	}
 	return v
-}
-
-func isNotFound(err error) bool {
-	return errors.Is(err, storage.ErrNotFound)
 }

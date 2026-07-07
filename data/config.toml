@@ -1,7 +1,7 @@
 hostname = "test.local"
 
 [storage]
-path = "/home/radhey/random/email-thingi/marco/data/marco.db"
+path = "data/marco.db"
 blob_backend = "sqlite"
 
 [smtp]

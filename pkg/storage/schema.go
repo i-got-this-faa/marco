@@ -150,13 +150,13 @@ CREATE INDEX IF NOT EXISTS idx_dmarc_results_domain_unsent ON dmarc_results(from
 	},
 	{
 		version: 5,
-		ddl: `ALTER TABLE blobs ADD COLUMN refcount INTEGER NOT NULL DEFAULT 1;`,
+		ddl:     `ALTER TABLE blobs ADD COLUMN refcount INTEGER NOT NULL DEFAULT 1;`,
 	},
 	{
 		version: 6,
 		ddl: `
 ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
-UPDATE users SET is_admin = 1;
+UPDATE users SET is_admin = 1 WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1);
 `,
 	},
 	{

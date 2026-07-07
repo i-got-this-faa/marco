@@ -63,12 +63,8 @@ GET  /api/me
 GET  /api/mailboxes
 GET  /api/mailboxes/{id}/messages
 GET  /api/messages/{id}
-GET  /api/messages/{id}/raw
-GET  /api/messages/{id}/parts
-GET  /api/messages/{id}/parts/{part}
 GET  /api/contacts
 POST /api/contacts
-PUT  /api/contacts/{id}
 DEL  /api/contacts/{id}
 ```
 
