@@ -315,8 +315,21 @@ func TestUserRenameMailbox(t *testing.T) {
 	user := loginHelper(t, be, testEmail, testPassword)
 
 	err := user.RenameMailbox("INBOX", "INBOX-renamed")
+	if err != nil {
+		t.Fatalf("RenameMailbox failed: %v", err)
+	}
+
+	// Verify it was renamed.
+	_, err = user.GetMailbox("INBOX")
 	if err == nil {
-		t.Fatal("RenameMailbox should return error for MVP")
+		t.Error("expected error getting old name 'INBOX'")
+	}
+	mb, err := user.GetMailbox("INBOX-renamed")
+	if err != nil {
+		t.Fatalf("GetMailbox('INBOX-renamed') failed: %v", err)
+	}
+	if mb.Name() != "INBOX-renamed" {
+		t.Errorf("name = %q, want 'INBOX-renamed'", mb.Name())
 	}
 }
 

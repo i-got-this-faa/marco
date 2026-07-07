@@ -8,36 +8,40 @@
 hostname = "mail.example.com"
 domains = ["example.com"]
 
+# IP version for listeners and outbound delivery.
+# "any"  = dual-stack (default, listens on both IPv4 and IPv6)
+# "ipv4" = IPv4 only
+# "ipv6" = IPv6 only (use when ISP blocks IPv4 port forwarding)
+# ip_version = "any"
+
 [storage]
 # SQLite database path.
 path = "/var/lib/marco/marco.db"
-# Blob backend: "filesystem" or "sqlite".
+# Blob backend: "filesystem", "sqlite", or "s3".
 blob_backend = "filesystem"
-# Path for filesystem blobs (ignored when blob_backend = "sqlite").
+# Path for filesystem blobs (ignored when blob_backend is not "filesystem").
 blob_path = "/var/lib/marco/blobs"
 
 [smtp]
 # SMTP port 25 — plain and STARTTLS.
-listen_addr = "0.0.0.0:25"
+listen_addr = ":25"
 # Submission port 587 — always requires STARTTLS + AUTH.
-submission_addr = "0.0.0.0:587"
+submission_addr = ":587"
 # SMTPS port 465 — implicit TLS.
-submissions_addr = "0.0.0.0:465"
+submissions_addr = ":465"
 # Maximum incoming message size in bytes (default 25 MiB).
 max_message_size = 26214400
 # Maximum recipients per envelope (default 100).
 max_recipients = 100
-# Override advertised hostname for this listener (defaults to top-level hostname).
-# hostname = "mx.example.com"
+# Per-IP rate limit (tokens/sec, 0 = disabled).
+# rate_limit = 10
+# rate_limit_burst = 20
+# Greylisting delay (0 = disabled). Default is 5 minutes.
+# greylisting_delay = "5m"
 
 [imap]
-listen_addr = "0.0.0.0:143"
-imaps_addr = "0.0.0.0:993"
-
-[pop3]
-listen_addr = "0.0.0.0:110"
-# POP3S (implicit TLS)
-# pop3s_addr = "0.0.0.0:995"
+listen_addr = ":143"
+imaps_addr = ":993"
 
 [tls]
 # Paths to PEM-encoded certificate and key.
@@ -72,8 +76,14 @@ selector = "default"
 # Generate with:  go run ./cmd/marco genkey example.com
 # private_key_path = "/etc/marco/dkim/private.pem"
 
+[dmarc]
+# Organization name for aggregate report metadata.
+org_name = "example.com"
+# How often to generate and send aggregate reports.
+report_interval = "24h"
+
 [admin]
-listen_addr = "0.0.0.0:8080"
+listen_addr = ":8080"
 
 [logging]
 level = "info"

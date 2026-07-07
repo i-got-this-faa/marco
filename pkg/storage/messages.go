@@ -93,7 +93,7 @@ func ListMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, s
 		q += ` AND uid > ?`
 		args = append(args, sinceUID)
 	}
-	q += ` ORDER BY uid ASC`
+	q += ` ORDER BY uid DESC`
 	if limit > 0 {
 		q += ` LIMIT ?`
 		args = append(args, limit)
