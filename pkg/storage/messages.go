@@ -117,6 +117,41 @@ func ListMessages(ctx context.Context, db *sql.DB, mailboxID int64, limit int, s
 	return msgs, rows.Err()
 }
 
+// ListMessagesPaginated returns messages in a mailbox, newest first, with
+// LIMIT/OFFSET pagination suitable for a browser UI.
+func ListMessagesPaginated(ctx context.Context, db *sql.DB, mailboxID int64, limit int, offset int) ([]*Message, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, mailbox_id, uid, blob_key, size, flags, internal_date, from_addr, to_addr, subject
+		 FROM messages WHERE mailbox_id = ? ORDER BY uid DESC LIMIT ? OFFSET ?`,
+		mailboxID, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage: list messages paginated: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []*Message
+	for rows.Next() {
+		m := &Message{}
+		if err := rows.Scan(&m.ID, &m.MailboxID, &m.UID, &m.BlobKey, &m.Size, &m.Flags,
+			&m.InternalDate, &m.FromAddr, &m.ToAddr, &m.Subject); err != nil {
+			return nil, fmt.Errorf("storage: list messages paginated scan: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: list messages paginated rows: %w", err)
+	}
+	return msgs, nil
+}
+
 // UpdateFlags sets or clears message flags using a bitmask. Bits set in
 // flagsMask are set to the corresponding bit in flags on the stored value.
 func UpdateFlags(ctx context.Context, db *sql.DB, messageID int64, flags, flagsMask int) error {

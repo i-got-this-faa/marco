@@ -11,9 +11,9 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
-
 	"github.com/i-got-this-faa/marco/pkg/storage"
 )
+
 
 // worker runs the delivery loop for a single goroutine.
 func (m *Manager) worker(ctx context.Context) {
@@ -54,7 +54,7 @@ func (m *Manager) deliverNext(ctx context.Context) {
 		return
 	}
 
-	// 2. Read message blob into memory (we need it for DKIM and multiple MX attempts).
+	// 2. Read message blob into memory.
 	rc, err := m.blob.Get(ctx, msg.BlobKey)
 	if err != nil {
 		m.log.Error("get blob failed", "queue_id", item.ID, "blob_key", msg.BlobKey, "error", err)
@@ -94,7 +94,32 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	}
 	domain := parts[1]
 
-	// 5. MX lookup.
+	// 5. Check if domain is local; deliver directly if so.
+	isLocal, err := storage.IsLocalDomain(ctx, m.db, domain)
+	if err != nil {
+		m.log.Error("local domain check failed", "domain", domain, "error", err)
+		_ = storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
+		return
+	}
+	if isLocal {
+		m.log.Info("local delivery", "queue_id", item.ID, "rcpt", item.RcptTo)
+		if err := m.deliverLocal(ctx, msg, item, raw); err != nil {
+			m.log.Error("local delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", err)
+			ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
+			if errors.Is(ferr, storage.ErrMaxRetries) {
+				_ = m.BounceMessage(msg.FromAddr, item.RcptTo, "local delivery failed: "+err.Error(), nil)
+			}
+			return
+		}
+		if cerr := storage.Complete(ctx, m.db, item.ID); cerr != nil {
+			m.log.Error("complete failed", "queue_id", item.ID, "error", cerr)
+		}
+		m.metrics.QueuePending.Dec()
+		m.metrics.MessagesDelivered.Inc()
+		return
+	}
+
+	// 6. MX lookup for remote delivery.
 	mxes, err := net.LookupMX(domain)
 	if err != nil || len(mxes) == 0 {
 		m.log.Error("mx lookup failed", "domain", domain, "error", err)
@@ -109,7 +134,7 @@ func (m *Manager) deliverNext(ctx context.Context) {
 		return
 	}
 
-	// 6. Try each MX (sorted by priority, lowest first).
+	// 7. Try each MX (sorted by priority, lowest first).
 	var lastErr error
 	for _, mx := range mxes {
 		lastErr = deliverToMX(bytes.NewReader(msgData), mx.Host, msg.FromAddr, item.RcptTo, m.ipVersion)
@@ -134,6 +159,60 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	} else if ferr != nil {
 		m.log.Error("requeue failed", "error", ferr)
 	}
+}
+
+func (m *Manager) deliverLocal(ctx context.Context, msg *storage.Message, item *storage.QueueItem, raw []byte) error {
+	// Store the blob under a new key for the local delivery.
+	blobKey, size, err := m.blob.Put(ctx, bytes.NewReader(raw), nil)
+	if err != nil {
+		return fmt.Errorf("store blob: %w", err)
+	}
+	cleanup := func() { _ = m.blob.Delete(ctx, blobKey) }
+
+	// Parse recipient address.
+	rcptParts := strings.SplitN(item.RcptTo, "@", 2)
+	if len(rcptParts) != 2 {
+		cleanup()
+		return fmt.Errorf("invalid recipient address: %s", item.RcptTo)
+	}
+	localPart, domain := rcptParts[0], rcptParts[1]
+
+	// Resolve alias if this address is an alias.
+	rcptEmail := item.RcptTo
+	alias, err := storage.GetAlias(ctx, m.db, localPart, domain)
+	if err == nil {
+		rcptEmail = alias.Destination
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		// A real database error — log and continue with original email.
+		m.log.Warn("alias lookup failed", "rcpt", item.RcptTo, "error", err)
+	}
+
+	// Find the recipient user by email.
+	user, err := storage.GetUserByEmail(ctx, m.db, rcptEmail)
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("get recipient user: %w", err)
+	}
+
+	// Get the recipient's INBOX.
+	inbox, err := storage.GetMailbox(ctx, m.db, user.ID, "INBOX")
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("get inbox: %w", err)
+	}
+
+	// Insert the message.
+	fromAddr := msg.FromAddr
+	if fromAddr == "" {
+		fromAddr = "postmaster@local"
+	}
+	_, _, err = storage.InsertMessage(ctx, m.db, inbox.ID, blobKey, size, fromAddr, item.RcptTo, msg.Subject, 0)
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("insert message: %w", err)
+	}
+
+	return nil
 }
 
 // deliverToMX connects to a remote MX server and delivers a message.

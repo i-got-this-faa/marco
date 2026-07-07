@@ -49,7 +49,7 @@ func newTestFixture(t *testing.T) *testFixture {
 	db := setupTestDB(t)
 	am := auth.NewManager(db)
 	m := metrics.NewRegistry()
-	router := withMiddleware(NewRouter(db, nil, am, nil, 24*time.Hour, m, config.DKIMConfig{}, ""))
+	router := withMiddleware(NewRouter(db, nil, nil, am, nil, 24*time.Hour, m, config.DKIMConfig{}, ""))
 	return &testFixture{db: db, am: am, router: router}
 }
 
@@ -89,7 +89,7 @@ func readResponse(t *testing.T, body *bytes.Buffer) response {
 // createTestUser creates a user directly via auth for use in login tests.
 func createTestUser(t *testing.T, am *auth.Manager, email, password string) int64 {
 	t.Helper()
-	id, err := am.CreateUser(context.Background(), email, password)
+	id, err := am.CreateUser(context.Background(), email, password, false)
 	if err != nil {
 		t.Fatalf("CreateUser(%q): %v", email, err)
 	}
@@ -571,7 +571,7 @@ func TestNewServer(t *testing.T) {
 	am := auth.NewManager(db)
 	m := metrics.NewRegistry()
 	cfg := &config.AdminConfig{ListenAddr: ":9999"}
-	srv := NewServer(cfg, db, nil, am, nil, nil, m, config.DKIMConfig{}, "")
+	srv := NewServer(cfg, db, nil, nil, am, nil, nil, m, config.DKIMConfig{}, "")
 
 	if srv == nil {
 		t.Fatal("NewServer returned nil")

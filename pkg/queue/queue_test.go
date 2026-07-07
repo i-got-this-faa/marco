@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bytes"
+	"errors"
 	"context"
 	"database/sql"
 	"fmt"
@@ -41,7 +42,7 @@ func migrateTestDB(t *testing.T) *sql.DB {
 func ensureUser(t *testing.T, db *sql.DB, email, passwordHash string) int64 {
 	t.Helper()
 	ctx := context.Background()
-	id, err := storage.CreateUser(ctx, db, email, passwordHash)
+	id, err := storage.CreateUser(ctx, db, email, passwordHash, false)
 	if err != nil {
 		t.Fatalf("CreateUser(%q): %v", email, err)
 	}
@@ -222,6 +223,9 @@ func TestQueueMaxRetries(t *testing.T) {
 
 		past := time.Now().Add(-time.Hour)
 		if err := storage.Fail(ctx, db, item.ID, past, maxRetries); err != nil {
+			if attempt == maxRetries {
+				break // expected — item removed
+			}
 			t.Fatalf("Fail at attempt %d: %v", attempt, err)
 		}
 	}
@@ -458,7 +462,12 @@ func TestWorkerPermanentFailure(t *testing.T) {
 			break
 		}
 		past := time.Now().Add(-time.Hour)
-		if err := storage.Fail(ctx, db, item.ID, past, maxRetries); err != nil {
+		err = storage.Fail(ctx, db, item.ID, past, maxRetries)
+		if attempt == maxRetries {
+			if !errors.Is(err, storage.ErrMaxRetries) {
+				t.Fatalf("expected ErrMaxRetries on final attempt, got %v", err)
+			}
+		} else if err != nil {
 			t.Fatalf("Fail attempt %d: %v", attempt, err)
 		}
 	}

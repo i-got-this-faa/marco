@@ -5,6 +5,7 @@ type User struct {
 	ID           int64  `json:"id"`
 	Email        string `json:"email"`
 	PasswordHash string `json:"-"`
+	IsAdmin     bool   `json:"is_admin"`
 	CreatedAt    int64  `json:"created_at"`
 	IsActive     bool   `json:"is_active"`
 }

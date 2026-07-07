@@ -178,7 +178,7 @@ func Run() {
 	smtpSrv := smtp.NewServer(&cfg.SMTP, db, blob, qm, am, dk, m, tlsCfg)
 	imapBe := imap.NewBackend(db, blob, am)
 	imapSrv := imap.NewServer(&cfg.IMAP, imapBe, tlsCfg)
-	apiSrv := api.NewServer(&cfg.Admin, db, qm, am, dk, tlsCfg, m, cfg.DKIM, cfg.DKIM.PrivateKeyPath)
+	apiSrv := api.NewServer(&cfg.Admin, db, blob, qm, am, dk, tlsCfg, m, cfg.DKIM, cfg.DKIM.PrivateKeyPath)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

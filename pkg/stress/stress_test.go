@@ -45,7 +45,7 @@ func setupUsers(t *testing.T, db *sql.DB, count int) []string {
 	mgr := auth.NewManager(db)
 	for i := range count {
 		email := fmt.Sprintf("stress-user-%d@test.local", i)
-		_, err := mgr.CreateUser(ctx, email, fmt.Sprintf("password-%d", i))
+		_, err := mgr.CreateUser(ctx, email, fmt.Sprintf("password-%d", i), false)
 		if err != nil {
 			t.Fatalf("CreateUser %d: %v", i, err)
 		}
@@ -90,7 +90,7 @@ func TestConcurrentSMTPConnections(t *testing.T) {
 	setupUsers(t, db, 5)
 
 	mgr := auth.NewManager(db)
-	_, err := mgr.CreateUser(ctx, "stress-sender@test.local", "sender-password-ok")
+	_, err := mgr.CreateUser(ctx, "stress-sender@test.local", "sender-password-ok", false)
 	if err != nil {
 		t.Fatalf("CreateUser sender: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestConcurrentQueueOperations(t *testing.T) {
 	ctx := context.Background()
 
 	mgr := auth.NewManager(db)
-	userID, err := mgr.CreateUser(ctx, "queue-user@test.local", "queue-password-ok")
+	userID, err := mgr.CreateUser(ctx, "queue-user@test.local", "queue-password-ok", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestLargeMessageDelivery(t *testing.T) {
 	ctx := context.Background()
 	users := setupUsers(t, db, 3)
 	mgr := auth.NewManager(db)
-	_, err := mgr.CreateUser(ctx, "big-sender@test.local", "big-sender-pass")
+	_, err := mgr.CreateUser(ctx, "big-sender@test.local", "big-sender-pass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

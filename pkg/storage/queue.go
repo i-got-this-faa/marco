@@ -81,25 +81,36 @@ func Complete(ctx context.Context, db *sql.DB, queueID int64) error {
 // attempt count and setting the next attempt time. If max retries have
 // been exceeded, the item is removed and Fail returns ErrMaxRetries.
 func Fail(ctx context.Context, db *sql.DB, queueID int64, nextAttempt time.Time, maxRetries int) error {
-	return withTx(ctx, db, func(tx *sql.Tx) error {
-		var attemptCount int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT attempt_count FROM queue WHERE id = ?`, queueID,
-		).Scan(&attemptCount); err != nil {
-			return fmt.Errorf("storage: fail fetch: %w", err)
-		}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
-		if attemptCount >= maxRetries {
-			_, err := tx.ExecContext(ctx, `DELETE FROM queue WHERE id = ?`, queueID)
+	var attemptCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT attempt_count FROM queue WHERE id = ?`, queueID,
+	).Scan(&attemptCount); err != nil {
+		return err
+	}
+
+	if attemptCount >= maxRetries {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM queue WHERE id = ?`, queueID); err != nil {
 			return err
 		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return ErrMaxRetries
+	}
 
-		_, err := tx.ExecContext(ctx,
-			`UPDATE queue SET status = 'pending', attempt_count = attempt_count + 1, next_attempt = ? WHERE id = ?`,
-			nextAttempt.Unix(), queueID,
-		)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE queue SET status = 'pending', attempt_count = attempt_count + 1, next_attempt = ? WHERE id = ?`,
+		nextAttempt.Unix(), queueID,
+	); err != nil {
 		return err
-	})
+	}
+	return tx.Commit()
 }
 
 // ListPending returns queue items that are pending or active, for

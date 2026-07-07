@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
+	"github.com/i-got-this-faa/marco/pkg/blobstore"
 	"github.com/i-got-this-faa/marco/pkg/config"
 	"github.com/i-got-this-faa/marco/pkg/dkim"
 	"github.com/i-got-this-faa/marco/pkg/metrics"
@@ -13,12 +14,13 @@ import (
 )
 
 // NewRouter creates the HTTP handler with all routes.
-func NewRouter(db *sql.DB, qm *queue.Manager, am *auth.Manager, dk *dkim.Signer,
+func NewRouter(db *sql.DB, blob blobstore.Store, qm *queue.Manager, am *auth.Manager, dk *dkim.Signer,
 	sessionExpiry time.Duration, m *metrics.Registry, dkimCfg config.DKIMConfig, dkimPrivKeyPath string) http.Handler {
 	mux := http.NewServeMux()
 
 	h := &handlers{
 		db:              db,
+		blob:            blob,
 		qm:              qm,
 		am:              am,
 		dk:              dk,
@@ -51,6 +53,17 @@ func NewRouter(db *sql.DB, qm *queue.Manager, am *auth.Manager, dk *dkim.Signer,
 	mux.HandleFunc("GET /api/stats", authMW(h.handleStats))
 	mux.HandleFunc("POST /api/dkim/rotate", authMW(h.handleDKIMRotate))
 	mux.HandleFunc("GET /api/metrics", h.handleMetrics)
+
+	// User-scoped email browser endpoints.
+	mux.HandleFunc("GET /api/me", authMW(h.handleMe))
+	mux.HandleFunc("GET /api/mailboxes", authMW(h.handleListMailboxes))
+	mux.HandleFunc("GET /api/mailboxes/{id}/messages", authMW(h.handleListMailboxMessages))
+	mux.HandleFunc("GET /api/messages/{id}", authMW(h.handleGetMessage))
+	mux.HandleFunc("POST /api/messages/{id}/flags", authMW(h.handleUpdateFlags))
+	mux.HandleFunc("POST /api/messages/send", authMW(h.handleSendMessage))
+	mux.HandleFunc("GET /api/contacts", authMW(h.handleListContacts))
+	mux.HandleFunc("POST /api/contacts", authMW(h.handleCreateContact))
+	mux.HandleFunc("DELETE /api/contacts/{id}", authMW(h.handleDeleteContact))
 
 	return mux
 }

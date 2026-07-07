@@ -38,7 +38,7 @@ func migrateTestDB(t *testing.T) *sql.DB {
 func ensureUser(t *testing.T, db *sql.DB, email, passwordHash string) int64 {
 	t.Helper()
 	ctx := context.Background()
-	id, err := CreateUser(ctx, db, email, passwordHash)
+	id, err := CreateUser(ctx, db, email, passwordHash, false)
 	if err != nil {
 		t.Fatalf("CreateUser(%q): %v", email, err)
 	}
@@ -101,8 +101,8 @@ func TestMigrate(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version != 5 {
-		t.Fatalf("expected user_version=5, got %d", version)
+	if version != 7 {
+		t.Fatalf("expected user_version=7, got %d", version)
 	}
 	// Verify all tables are queryable.
 	expectTables := []string{
@@ -127,9 +127,9 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version != 5 {
-		t.Fatalf("expected user_version=5, got %d", version)
-}
+	if version != 7 {
+		t.Fatalf("expected user_version=7, got %d", version)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ func TestCreateUser(t *testing.T) {
 	db := migrateTestDB(t)
 	ctx := context.Background()
 
-	id, err := CreateUser(ctx, db, "alice@example.com", "hash1")
+	id, err := CreateUser(ctx, db, "alice@example.com", "hash1", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestCreateUserDuplicateEmail(t *testing.T) {
 	ctx := context.Background()
 
 	ensureUser(t, db, "dup@example.com", "hash1")
-	_, err := CreateUser(ctx, db, "dup@example.com", "hash2")
+	_, err := CreateUser(ctx, db, "dup@example.com", "hash2", false)
 	if err == nil {
 		t.Fatal("expected error on duplicate email, got nil")
 	}
@@ -255,7 +255,7 @@ func TestUpdateUser(t *testing.T) {
 
 	// Update email only.
 	newEmail := "updated@example.com"
-	if err := UpdateUser(ctx, db, id, &newEmail, nil, nil); err != nil {
+	if err := UpdateUser(ctx, db, id, &newEmail, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateUser(email): %v", err)
 	}
 	u, err := GetUserByID(ctx, db, id)
@@ -271,7 +271,7 @@ func TestUpdateUser(t *testing.T) {
 
 	// Update password only.
 	newHash := "new-hash"
-	if err := UpdateUser(ctx, db, id, nil, &newHash, nil); err != nil {
+	if err := UpdateUser(ctx, db, id, nil, &newHash, nil, nil); err != nil {
 		t.Fatalf("UpdateUser(hash): %v", err)
 	}
 	u, err = GetUserByID(ctx, db, id)
@@ -287,7 +287,7 @@ func TestUpdateUser(t *testing.T) {
 
 	// Update is_active only.
 	inactive := false
-	if err := UpdateUser(ctx, db, id, nil, nil, &inactive); err != nil {
+	if err := UpdateUser(ctx, db, id, nil, nil, &inactive, nil); err != nil {
 		t.Fatalf("UpdateUser(isActive): %v", err)
 	}
 	u, err = GetUserByID(ctx, db, id)
@@ -304,7 +304,7 @@ func TestUpdateUserNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	newEmail := "doesntmatter@example.com"
-	if err := UpdateUser(ctx, db, 999, &newEmail, nil, nil); err == nil {
+	if err := UpdateUser(ctx, db, 999, &newEmail, nil, nil, nil); err == nil {
 		t.Fatal("expected ErrNotFound on update for missing user, got nil")
 	}
 }
@@ -1135,8 +1135,8 @@ func TestFailRemovesOnMaxRetries(t *testing.T) {
 	nextAttempt := time.Now().Add(5 * time.Minute)
 	maxRetries := 0
 
-	if err := Fail(ctx, db, item.ID, nextAttempt, maxRetries); err != nil {
-		t.Fatalf("Fail (maxRetries=0): %v", err)
+	if err := Fail(ctx, db, item.ID, nextAttempt, maxRetries); !errors.Is(err, ErrMaxRetries) {
+		t.Fatalf("Fail (maxRetries=0): expected ErrMaxRetries, got %v", err)
 	}
 
 	size, err := QueueSize(ctx, db)
@@ -1211,7 +1211,7 @@ func TestErrNotFoundSentinel(t *testing.T) {
 
 	// Update/delete on missing users.
 	newEmail := "x@y.com"
-	err = UpdateUser(ctx, db, 999, &newEmail, nil, nil)
+	err = UpdateUser(ctx, db, 999, &newEmail, nil, nil, nil)
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateUser (missing): expected ErrNotFound, got %v", err)
 	}
@@ -1333,7 +1333,7 @@ func TestContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // immediately cancelled
 
-	_, err := CreateUser(ctx, db, "fail@e.com", "hash")
+	_, err := CreateUser(ctx, db, "fail@e.com", "hash", false)
 	if err == nil {
 		t.Log("CreateUser with cancelled context succeeded (may still work with in-memory)")
 	}
@@ -1348,7 +1348,7 @@ func TestEndToEndFlow(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Create user.
-	userID, err := CreateUser(ctx, db, "user@example.com", "hash-pw")
+	userID, err := CreateUser(ctx, db, "user@example.com", "hash-pw", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

@@ -1,0 +1,44 @@
+hostname = "pico-cachyos"
+domains = ["test.local"]
+
+[storage]
+path = "data/marco.db"
+blob_backend = "sqlite"
+
+[smtp]
+listen_addr = "127.0.0.1:10025"
+submission_addr = "127.0.0.1:10587"
+submissions_addr = ""
+max_message_size = 26214400
+max_recipients = 100
+rate_limit = 10
+rate_limit_burst = 20
+greylisting_delay = "300s"
+
+[imap]
+listen_addr = "127.0.0.1:10143"
+imaps_addr = "127.0.0.1:10993"
+
+[pop3]
+listen_addr = "127.0.0.1:10110"
+
+[auth]
+session_expiry = "24h"
+
+[queue]
+workers = 2
+max_retries = 3
+interval = "10s"
+
+[admin]
+listen_addr = "127.0.0.1:18080"
+session_expiry = "24h"
+rate_limit = 20
+rate_limit_burst = 40
+
+[dmarc]
+report_interval = "24h"
+
+[logging]
+level = "info"
+format = "text"
