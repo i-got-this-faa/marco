@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -37,21 +36,21 @@ type StorageConfig struct {
 
 // SMTPConfig controls the SMTP listener(s).
 type SMTPConfig struct {
-	ListenAddr      string        `toml:"listen_addr"`
-	SubmissionAddr  string        `toml:"submission_addr"`
-	SubmissionsAddr string        `toml:"submissions_addr"`
-	MaxMessageSize  int64         `toml:"max_message_size"`
-	MaxRecipients   int           `toml:"max_recipients"`
-	Hostname        string        `toml:"hostname"`
-	RateLimit       float64       `toml:"rate_limit"`
-	RateLimitBurst  int           `toml:"rate_limit_burst"`
+	ListenAddr       string        `toml:"listen_addr"`
+	SubmissionAddr   string        `toml:"submission_addr"`
+	SubmissionsAddr  string        `toml:"submissions_addr"`
+	MaxMessageSize   int64         `toml:"max_message_size"`
+	MaxRecipients    int           `toml:"max_recipients"`
+	Hostname         string        `toml:"hostname"`
+	RateLimit        float64       `toml:"rate_limit"`
+	RateLimitBurst   int           `toml:"rate_limit_burst"`
 	GreylistingDelay time.Duration `toml:"greylisting_delay"`
 }
 
 // IMAPConfig controls the IMAP listener(s).
 type IMAPConfig struct {
-	ListenAddr  string `toml:"listen_addr"`
-	ImapsAddr   string `toml:"imaps_addr"`
+	ListenAddr string `toml:"listen_addr"`
+	ImapsAddr  string `toml:"imaps_addr"`
 }
 
 // POP3Config controls the POP3 listener(s).
@@ -96,10 +95,10 @@ type DKIMConfig struct {
 
 // AdminConfig controls the HTTP admin API.
 type AdminConfig struct {
-	ListenAddr      string        `toml:"listen_addr"`
-	SessionExpiry   time.Duration `toml:"session_expiry"`
-	RateLimit       float64       `toml:"rate_limit"`
-	RateLimitBurst  int           `toml:"rate_limit_burst"`
+	ListenAddr     string        `toml:"listen_addr"`
+	SessionExpiry  time.Duration `toml:"session_expiry"`
+	RateLimit      float64       `toml:"rate_limit"`
+	RateLimitBurst int           `toml:"rate_limit_burst"`
 }
 
 // DMARCConfig controls DMARC aggregate report generation.
@@ -108,6 +107,7 @@ type DMARCConfig struct {
 	ReportInterval time.Duration `toml:"report_interval"`
 	Email          string        `toml:"email"`
 }
+
 // LogConfig controls structured logging.
 type LogConfig struct {
 	Level  string `toml:"level"`
@@ -119,7 +119,7 @@ func DefaultPath() string {
 	if p := os.Getenv("MARCO_CONFIG"); p != "" {
 		return p
 	}
-	return "/etc/marco/config.toml"
+	return "marco.toml"
 }
 
 // Load reads and parses a TOML config file, applying defaults for
@@ -158,9 +158,9 @@ func defaultConfig() *Config {
 		Hostname:  hostname,
 		IPVersion: "any",
 		Storage: StorageConfig{
-			Path:        "/var/lib/marco/marco.db",
+			Path:        "data/marco.db",
 			BlobBackend: "filesystem",
-			BlobPath:    "/var/lib/marco/blobs",
+			BlobPath:    "data/blobs",
 		},
 		SMTP: SMTPConfig{
 			ListenAddr:       ":25",
@@ -182,7 +182,7 @@ func defaultConfig() *Config {
 		},
 		TLS: TLSConfig{},
 		ACME: ACMEConfig{
-			CacheDir: "/var/lib/marco/acme",
+			CacheDir: "data/acme",
 		},
 		Auth: AuthConfig{
 			SessionExpiry: 24 * time.Hour,
@@ -211,5 +211,5 @@ func defaultConfig() *Config {
 
 // Template generates a default config template path.
 func Template() string {
-	return filepath.Join("/etc/marco", "config.toml")
+	return "marco.toml"
 }

@@ -52,7 +52,7 @@ func makeUsers(b *testing.B, ctx context.Context, db *sql.DB, n int) []string {
 	emails := make([]string, n)
 	for i := 0; i < n; i++ {
 		email := fmt.Sprintf("user-%d@test.local", i)
-		if _, err := mgr.CreateUser(ctx, email, fmt.Sprintf("password-%d", i, false)); err != nil {
+		if _, err := mgr.CreateUser(ctx, email, fmt.Sprintf("password-%d", i), false); err != nil {
 			b.Fatalf("CreateUser %d: %v", i, err)
 		}
 		emails[i] = email
