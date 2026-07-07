@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bytes"
+	"errors"
 	"context"
 	"database/sql"
 	"fmt"
@@ -222,6 +223,9 @@ func TestQueueMaxRetries(t *testing.T) {
 
 		past := time.Now().Add(-time.Hour)
 		if err := storage.Fail(ctx, db, item.ID, past, maxRetries); err != nil {
+			if attempt == maxRetries {
+				break // expected — item removed
+			}
 			t.Fatalf("Fail at attempt %d: %v", attempt, err)
 		}
 	}
@@ -458,7 +462,12 @@ func TestWorkerPermanentFailure(t *testing.T) {
 			break
 		}
 		past := time.Now().Add(-time.Hour)
-		if err := storage.Fail(ctx, db, item.ID, past, maxRetries); err != nil {
+		err = storage.Fail(ctx, db, item.ID, past, maxRetries)
+		if attempt == maxRetries {
+			if !errors.Is(err, storage.ErrMaxRetries) {
+				t.Fatalf("expected ErrMaxRetries on final attempt, got %v", err)
+			}
+		} else if err != nil {
 			t.Fatalf("Fail attempt %d: %v", attempt, err)
 		}
 	}

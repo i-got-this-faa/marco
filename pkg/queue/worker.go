@@ -161,31 +161,43 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	}
 }
 
-// deliverLocal stores a message directly in the recipient's INBOX for a local domain.
 func (m *Manager) deliverLocal(ctx context.Context, msg *storage.Message, item *storage.QueueItem, raw []byte) error {
 	// Store the blob under a new key for the local delivery.
 	blobKey, size, err := m.blob.Put(ctx, bytes.NewReader(raw), nil)
 	if err != nil {
 		return fmt.Errorf("store blob: %w", err)
 	}
+	cleanup := func() { _ = m.blob.Delete(ctx, blobKey) }
 
-	// Find the recipient user by email.
+	// Parse recipient address.
 	rcptParts := strings.SplitN(item.RcptTo, "@", 2)
 	if len(rcptParts) != 2 {
-		_ = m.blob.Delete(ctx, blobKey)
+		cleanup()
 		return fmt.Errorf("invalid recipient address: %s", item.RcptTo)
 	}
+	localPart, domain := rcptParts[0], rcptParts[1]
 
-	user, err := storage.GetUserByEmail(ctx, m.db, item.RcptTo)
+	// Resolve alias if this address is an alias.
+	rcptEmail := item.RcptTo
+	alias, err := storage.GetAlias(ctx, m.db, localPart, domain)
+	if err == nil {
+		rcptEmail = alias.Destination
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		// A real database error — log and continue with original email.
+		m.log.Warn("alias lookup failed", "rcpt", item.RcptTo, "error", err)
+	}
+
+	// Find the recipient user by email.
+	user, err := storage.GetUserByEmail(ctx, m.db, rcptEmail)
 	if err != nil {
-		_ = m.blob.Delete(ctx, blobKey)
+		cleanup()
 		return fmt.Errorf("get recipient user: %w", err)
 	}
 
 	// Get the recipient's INBOX.
 	inbox, err := storage.GetMailbox(ctx, m.db, user.ID, "INBOX")
 	if err != nil {
-		_ = m.blob.Delete(ctx, blobKey)
+		cleanup()
 		return fmt.Errorf("get inbox: %w", err)
 	}
 
@@ -196,7 +208,7 @@ func (m *Manager) deliverLocal(ctx context.Context, msg *storage.Message, item *
 	}
 	_, _, err = storage.InsertMessage(ctx, m.db, inbox.ID, blobKey, size, fromAddr, item.RcptTo, msg.Subject, 0)
 	if err != nil {
-		_ = m.blob.Delete(ctx, blobKey)
+		cleanup()
 		return fmt.Errorf("insert message: %w", err)
 	}
 

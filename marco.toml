@@ -13,7 +13,7 @@ max_message_size = 26214400
 max_recipients = 100
 rate_limit = 10
 rate_limit_burst = 20
-greylisting_delay = 300
+greylisting_delay = "300s"
 
 [imap]
 listen_addr = "127.0.0.1:10143"

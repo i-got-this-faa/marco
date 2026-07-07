@@ -363,15 +363,15 @@ func buildMessage(from, to, subject, textBody, htmlBody, inReplyTo, references, 
 
 	buf.WriteString(fmt.Sprintf("Message-ID: %s\r\n", msgID))
 	if inReplyTo != "" {
-		buf.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", inReplyTo))
+		buf.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", sanitizeHeaderValue(inReplyTo)))
 	}
 	if references != "" {
-		buf.WriteString(fmt.Sprintf("References: %s\r\n", references))
+		buf.WriteString(fmt.Sprintf("References: %s\r\n", sanitizeHeaderValue(references)))
 	}
 	buf.WriteString(fmt.Sprintf("Date: %s\r\n", now))
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	buf.WriteString(fmt.Sprintf("To: %s\r\n", to))
-	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", sanitizeHeaderValue(subject)))
 	buf.WriteString("MIME-Version: 1.0\r\n")
 
 	if htmlBody != "" {
@@ -395,6 +395,14 @@ func buildMessage(from, to, subject, textBody, htmlBody, inReplyTo, references, 
 	}
 
 	return buf.Bytes()
+}
+
+// sanitizeHeaderValue strips CR and LF characters from header values to
+// prevent header injection attacks.
+func sanitizeHeaderValue(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	return s
 }
 
 func parseIntQuery(r *http.Request, key string, defaultValue int) int {

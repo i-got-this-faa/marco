@@ -2,9 +2,11 @@ package storage
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net/mail"
 	"strings"
 )
@@ -35,19 +37,20 @@ func ParseMessageBody(msg *Message, r io.Reader) (*ParsedMessage, error) {
 	mediaType, params, err := mime.ParseMediaType(m.Header.Get("Content-Type"))
 	if err != nil {
 		// Treat as plain text.
-		body, _ := io.ReadAll(m.Body)
+		body, _ := decodeBody(m.Body, m.Header.Get("Content-Transfer-Encoding"))
 		pm.TextBody = string(body)
 		return pm, nil
 	}
 
 	if strings.HasPrefix(mediaType, "multipart/") {
 		pm.TextBody, pm.HTMLBody = extractParts(m.Body, params["boundary"])
-	} else if mediaType == "text/html" {
-		body, _ := io.ReadAll(m.Body)
-		pm.HTMLBody = string(body)
 	} else {
-		body, _ := io.ReadAll(m.Body)
-		pm.TextBody = string(body)
+		body, _ := decodeBody(m.Body, m.Header.Get("Content-Transfer-Encoding"))
+		if mediaType == "text/html" {
+			pm.HTMLBody = string(body)
+		} else {
+			pm.TextBody = string(body)
+		}
 	}
 
 	return pm, nil
@@ -66,8 +69,24 @@ func extractParts(r io.Reader, boundary string) (textBody, htmlBody string) {
 			break
 		}
 
-		mediaType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
-		slurp, err := io.ReadAll(p)
+		mediaType, params, err := mime.ParseMediaType(p.Header.Get("Content-Type"))
+		if err != nil {
+			continue
+		}
+
+		// Recurse into nested multipart parts.
+		if strings.HasPrefix(mediaType, "multipart/") {
+			nt, nh := extractParts(p, params["boundary"])
+			if textBody == "" {
+				textBody = nt
+			}
+			if htmlBody == "" {
+				htmlBody = nh
+			}
+			continue
+		}
+
+		slurp, err := decodeBody(p, p.Header.Get("Content-Transfer-Encoding"))
 		if err != nil {
 			continue
 		}
@@ -85,4 +104,17 @@ func extractParts(r io.Reader, boundary string) (textBody, htmlBody string) {
 	}
 
 	return textBody, htmlBody
+}
+
+// decodeBody reads the body and decodes it according to the
+// Content-Transfer-Encoding header value.
+func decodeBody(r io.Reader, encoding string) ([]byte, error) {
+	switch strings.ToLower(strings.TrimSpace(encoding)) {
+	case "quoted-printable":
+		return io.ReadAll(quotedprintable.NewReader(r))
+	case "base64":
+		return io.ReadAll(base64.NewDecoder(base64.StdEncoding, r))
+	default:
+		return io.ReadAll(r)
+	}
 }

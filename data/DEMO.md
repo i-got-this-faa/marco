@@ -31,7 +31,7 @@ Full access to the admin API and dashboard:
 
 Admin endpoints:
 
-```
+```text
 GET  /api/health
 GET  /api/stats
 GET  /api/users
@@ -58,7 +58,7 @@ Sample data is pre-loaded so each mailbox has realistic content.
 
 ### Mail API
 
-```
+```text
 GET  /api/me
 GET  /api/mailboxes
 GET  /api/mailboxes/{id}/messages

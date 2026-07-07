@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
-
 // ListDomains returns all domain names.
 func ListDomains(ctx context.Context, db *sql.DB) ([]string, error) {
 	rows, err := db.QueryContext(ctx, `SELECT name FROM domains ORDER BY name`)
@@ -34,7 +34,7 @@ func ListDomains(ctx context.Context, db *sql.DB) ([]string, error) {
 // CreateDomain inserts a new domain.
 func CreateDomain(ctx context.Context, db *sql.DB, name string) error {
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO domains (name) VALUES (?)`, name,
+		`INSERT INTO domains (name) VALUES (?)`, strings.ToLower(name),
 	)
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -60,7 +60,7 @@ func DeleteDomain(ctx context.Context, db *sql.DB, name string) error {
 
 // IsLocalDomain checks whether a domain is registered on this server.
 func IsLocalDomain(ctx context.Context, db *sql.DB, domain string) (bool, error) {
-	err := db.QueryRowContext(ctx, `SELECT 1 FROM domains WHERE name = ?`, domain).Scan(new(int))
+	err := db.QueryRowContext(ctx, `SELECT 1 FROM domains WHERE name = ?`, strings.ToLower(domain)).Scan(new(int))
 	if err == sql.ErrNoRows {
 		return false, nil
 	}

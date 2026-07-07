@@ -2,6 +2,7 @@
 
 bin/
 data/marco
+data/.marco_token
 
 # OS files
 .DS_Store
