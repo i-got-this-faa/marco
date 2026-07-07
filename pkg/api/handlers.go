@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
+	"github.com/i-got-this-faa/marco/pkg/blobstore"
 	"github.com/i-got-this-faa/marco/pkg/config"
 	"github.com/i-got-this-faa/marco/pkg/dkim"
 	"github.com/i-got-this-faa/marco/pkg/metrics"
@@ -29,6 +30,7 @@ type userKey struct{}
 // handlers holds the dependencies for HTTP handler functions.
 type handlers struct {
 	db            *sql.DB
+	blob          blobstore.Store
 	qm            *queue.Manager
 	am            *auth.Manager
 	dk            *dkim.Signer
@@ -69,20 +71,31 @@ func (h *handlers) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.am.Authenticate(r.Context(), req.Email, req.Password)
+	ctx := r.Context()
+	userID, err := h.am.Authenticate(ctx, req.Email, req.Password)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, response{Error: "invalid credentials"})
 		return
 	}
-	token, err := auth.CreateSession(r.Context(), h.db, userID, h.sessionExpiry)
+
+	user, err := storage.GetUserByID(ctx, h.db, userID)
+	if err != nil {
+		slog.Error("load user after login", "error", err)
+		writeJSON(w, http.StatusInternalServerError, response{Error: "login failed"})
+		return
+	}
+
+	token, err := auth.CreateSession(ctx, h.db, userID, h.sessionExpiry)
 	if err != nil {
 		slog.Error("session create failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, response{Error: "login failed"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response{OK: true, Data: map[string]string{
-		"token": token,
+	writeJSON(w, http.StatusOK, response{OK: true, Data: map[string]interface{}{
+		"token":    token,
+		"is_admin": user.IsAdmin,
+		"email":    user.Email,
 	}})
 }
 
@@ -107,13 +120,14 @@ func (h *handlers) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		IsAdmin  bool   `json:"is_admin"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, response{Error: "invalid request"})
 		return
 	}
 
-	_, err := h.am.CreateUser(r.Context(), req.Email, req.Password)
+	_, err := h.am.CreateUser(r.Context(), req.Email, req.Password, req.IsAdmin)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, response{Error: err.Error()})
 		return
@@ -304,6 +318,7 @@ func (h *handlers) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		Email    *string `json:"email"`
 		Password *string `json:"password"`
 		IsActive *bool   `json:"is_active"`
+		IsAdmin  *bool   `json:"is_admin"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, response{Error: "invalid request"})
@@ -321,7 +336,7 @@ func (h *handlers) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		passwordHash = &hash
 	}
 
-	if err := storage.UpdateUser(r.Context(), h.db, id, req.Email, passwordHash, req.IsActive); err != nil {
+	if err := storage.UpdateUser(r.Context(), h.db, id, req.Email, passwordHash, req.IsActive, req.IsAdmin); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, response{Error: "user not found"})
 			return

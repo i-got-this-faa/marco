@@ -53,7 +53,7 @@ func (m *Manager) Authenticate(ctx context.Context, username, password string) (
 
 // CreateUser hashes the password and creates a new user in storage.
 // It also provisions the default set of mailboxes.
-func (m *Manager) CreateUser(ctx context.Context, email, password string) (int64, error) {
+func (m *Manager) CreateUser(ctx context.Context, email, password string, isAdmin bool) (int64, error) {
 	if err := ValidatePasswordStrength(password); err != nil {
 		return 0, err
 	}
@@ -63,7 +63,7 @@ func (m *Manager) CreateUser(ctx context.Context, email, password string) (int64
 		return 0, err
 	}
 
-	userID, err := storage.CreateUser(ctx, m.db, email, hash)
+	userID, err := storage.CreateUser(ctx, m.db, email, hash, isAdmin)
 	if err != nil {
 		return 0, fmt.Errorf("auth: create user: %w", err)
 	}

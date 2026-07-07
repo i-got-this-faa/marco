@@ -54,7 +54,7 @@ func testServer(t *testing.T) (*Server, *sql.DB) {
 	db := migrateTestDB(t)
 	blob := blobstore.NewFSStore(t.TempDir())
 	am := auth.NewManager(db)
-	_, err := am.CreateUser(context.Background(), "test@example.com", "secret123")
+	_, err := am.CreateUser(context.Background(), "test@example.com", "secret123", false)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}

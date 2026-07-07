@@ -1,0 +1,43 @@
+hostname = "test.local"
+
+[storage]
+path = "/home/radhey/random/email-thingi/marco/data/marco.db"
+blob_backend = "sqlite"
+
+[smtp]
+listen_addr = "127.0.0.1:10026"
+submission_addr = "127.0.0.1:10588"
+hostname = "test.local"
+submissions_addr = ""
+max_message_size = 26214400
+max_recipients = 100
+
+[imap]
+listen_addr = "127.0.0.1:10144"
+imaps_addr = "127.0.0.1:10994"
+
+[pop3]
+listen_addr = "127.0.0.1:10110"
+
+[admin]
+listen_addr = "127.0.0.1:18081"
+
+[auth]
+session_expiry = "24h"
+
+[queue]
+workers = 2
+max_retries = 3
+interval = "5s"
+
+[dkim]
+domain = "test.local"
+selector = "default"
+
+[tls]
+cert_file = ""
+key_file = ""
+
+[logging]
+level = "debug"
+format = "text"

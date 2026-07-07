@@ -57,3 +57,15 @@ func DeleteDomain(ctx context.Context, db *sql.DB, name string) error {
 	}
 	return nil
 }
+
+// IsLocalDomain checks whether a domain is registered on this server.
+func IsLocalDomain(ctx context.Context, db *sql.DB, domain string) (bool, error) {
+	err := db.QueryRowContext(ctx, `SELECT 1 FROM domains WHERE name = ?`, domain).Scan(new(int))
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("storage: check domain %q: %w", domain, err)
+	}
+	return true, nil
+}
