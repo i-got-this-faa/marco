@@ -51,7 +51,7 @@ session_expiry = "1h"
 level = "debug"
 format = "text"
 `
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -99,8 +99,8 @@ func TestDefaultPathEnv(t *testing.T) {
 
 func TestDefaultPathNoEnv(t *testing.T) {
 	t.Setenv("MARCO_CONFIG", "")
-	if p := DefaultPath(); p != "marco.toml" {
-		t.Errorf("DefaultPath = %q, want marco.toml", p)
+	if p := DefaultPath(); p != "/etc/marco/config.toml" {
+		t.Errorf("DefaultPath = %q, want /etc/marco/config.toml", p)
 	}
 }
 
@@ -145,7 +145,7 @@ func TestIPVersionValidation(t *testing.T) {
 			if tt.version == "" {
 				content = ""
 			}
-			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				t.Fatalf("WriteFile: %v", err)
 			}
 			_, err := Load(path)

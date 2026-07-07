@@ -45,7 +45,7 @@ func setupUsers(t *testing.T, db *sql.DB, count int) []string {
 	mgr := auth.NewManager(db)
 	for i := range count {
 		email := fmt.Sprintf("stress-user-%d@test.local", i)
-		_, err := mgr.CreateUser(ctx, email, fmt.Sprintf("password-%d", i), false)
+		_, err := mgr.CreateUser(ctx, email, fmt.Sprintf("password-%d", i, false))
 		if err != nil {
 			t.Fatalf("CreateUser %d: %v", i, err)
 		}

@@ -83,7 +83,7 @@ func TestManagerAuthenticate(t *testing.T) {
 	m := NewManager(db)
 
 	// Create a user.
-	userID, err := m.CreateUser(context.Background(), "test@example.com", "secure-password", false)
+	userID, err := m.CreateUser(context.Background(, false), "test@example.com", "secure-password")
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestManagerAuthenticateInactiveUser(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
 
-	userID, _ := m.CreateUser(context.Background(), "user@example.com", "password", false)
+	userID, _ := m.CreateUser(context.Background(, false), "user@example.com", "password")
 
 	// Deactivate the user.
 	active := false
@@ -135,7 +135,7 @@ func TestManagerCreateUser(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
 
-	userID, err := m.CreateUser(context.Background(), "new@example.com", "strong-password", false)
+	userID, err := m.CreateUser(context.Background(, false), "new@example.com", "strong-password")
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestManagerCreateUser(t *testing.T) {
 	}
 
 	// Duplicate email should fail.
-	_, err = m.CreateUser(context.Background(), "new@example.com", "another-password", false)
+	_, err = m.CreateUser(context.Background(, false), "new@example.com", "another-password")
 	if err == nil {
 		t.Fatal("expected error for duplicate email")
 	}
@@ -236,7 +236,7 @@ func TestRevokeSession(t *testing.T) {
 func TestSMTPAuth(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
-	m.CreateUser(context.Background(), "smtp@example.com", "smtp-password", false)
+	m.CreateUser(context.Background(, false), "smtp@example.com", "smtp-password")
 
 	server := SMTPAuth(m)
 	if server == nil {
@@ -247,7 +247,7 @@ func TestSMTPAuth(t *testing.T) {
 func TestIMAPAuthAdapter(t *testing.T) {
 	db := setupTestDB(t)
 	m := NewManager(db)
-	m.CreateUser(context.Background(), "imap@example.com", "imap-password", false)
+	m.CreateUser(context.Background(, false), "imap@example.com", "imap-password")
 
 	fn := AuthAdapter(m)
 	if fn == nil {
