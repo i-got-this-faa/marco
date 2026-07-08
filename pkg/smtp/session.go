@@ -296,8 +296,10 @@ func (s *Session) Logout() error {
 	s.backend.metrics.ActiveConnections.Dec()
 	return nil
 }
-
 func (s *Session) isLocalDomain(domain string) bool {
+	if _, ok := s.backend.localDomains.Load(domain); ok {
+		return true
+	}
 	return s.backend.cfg.Hostname == domain
 }
 

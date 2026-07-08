@@ -32,6 +32,8 @@ func (u *User) ListMailboxes(subscribed bool) ([]backend.Mailbox, error) {
 		return nil, err
 	}
 
+	u.log.Debug("list mailboxes", "count", len(mboxes))
+
 	results := make([]backend.Mailbox, len(mboxes))
 	for i, m := range mboxes {
 		results[i] = &Mailbox{
@@ -46,6 +48,7 @@ func (u *User) ListMailboxes(subscribed bool) ([]backend.Mailbox, error) {
 
 // GetMailbox returns a specific mailbox by name.
 func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
+	u.log.Debug("get mailbox", "name", name)
 	m, err := storage.GetMailbox(context.TODO(), u.db, u.userID, name)
 	if err != nil {
 		return nil, err
@@ -60,28 +63,29 @@ func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
 
 // CreateMailbox creates a new mailbox.
 func (u *User) CreateMailbox(name string) error {
+	u.log.Debug("create mailbox", "name", name)
 	_, err := storage.CreateMailbox(context.TODO(), u.db, u.userID, name)
 	return err
 }
 
 // DeleteMailbox deletes a mailbox.
 func (u *User) DeleteMailbox(name string) error {
+	u.log.Debug("delete mailbox", "name", name)
 	m, err := storage.GetMailbox(context.TODO(), u.db, u.userID, name)
 	if err != nil {
 		return err
 	}
 	return storage.DeleteMailbox(context.TODO(), u.db, m.ID)
 }
-
 // RenameMailbox renames a mailbox.
 func (u *User) RenameMailbox(existingName, newName string) error {
+	u.log.Debug("rename mailbox", "from", existingName, "to", newName)
 	m, err := storage.GetMailbox(context.TODO(), u.db, u.userID, existingName)
 	if err != nil {
 		return err
 	}
 	return storage.RenameMailbox(context.TODO(), u.db, m.ID, newName)
 }
-
 // Logout is called when the user logs out.
 func (u *User) Logout() error {
 	u.log.Debug("imap logout", "user", u.email)

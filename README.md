@@ -28,6 +28,27 @@ ip_version = "ipv6"
 
 Values: `"any"` (dual-stack, default), `"ipv4"`, `"ipv6"`.
 
+### Gmail SMTP relay
+
+If your ISP blocks outbound port 25 (common for residential connections),
+route Marco's outbound mail through Gmail's SMTP server:
+
+```toml
+[relay]
+host = "smtp.gmail.com"
+port = 587
+username = "your@gmail.com"
+password = "app-password"
+```
+
+You'll need a [Google App Password](https://myaccount.google.com/apppasswords)
+(requires 2-factor authentication on your Google account). Regular account
+passwords are rejected by Google's SMTP server.
+
+When `[relay]` is configured, the queue worker sends all outbound mail
+through the relay (STARTTLS + AUTH PLAIN) instead of doing direct MX
+delivery. When `host` is empty (the default), direct MX delivery is used.
+
 ## Features
 
 ### Core

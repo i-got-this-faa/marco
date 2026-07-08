@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net"
+	"sync"
 
 	"github.com/emersion/go-smtp"
 	"github.com/i-got-this-faa/marco/pkg/auth"
@@ -19,15 +20,54 @@ import (
 
 // Backend implements smtp.Backend.
 type Backend struct {
-	db      *sql.DB
-	blob    blobstore.Store
-	queue   *queue.Manager
-	auth    *auth.Manager
-	dkim    *dkim.Signer
-	cfg     *config.SMTPConfig
-	metrics *metrics.Registry
-	log     *slog.Logger
-	limiter *ratelimit.Limiter
+	db           *sql.DB
+	blob         blobstore.Store
+	queue        *queue.Manager
+	auth         *auth.Manager
+	dkim         *dkim.Signer
+	cfg          *config.SMTPConfig
+	metrics      *metrics.Registry
+	log          *slog.Logger
+	limiter      *ratelimit.Limiter
+	localDomains *sync.Map
+}
+
+// NewBackend creates a new SMTP Backend with initialized fields.
+func NewBackend(cfg *config.SMTPConfig, db *sql.DB, blob blobstore.Store,
+	qm *queue.Manager, am *auth.Manager, dk *dkim.Signer, m *metrics.Registry) *Backend {
+	var lim *ratelimit.Limiter
+	if cfg.RateLimit > 0 {
+		lim = ratelimit.New(cfg.RateLimit, cfg.RateLimitBurst)
+	}
+	be := &Backend{
+		db:           db,
+		blob:         blob,
+		queue:        qm,
+		auth:         am,
+		dkim:         dk,
+		cfg:          cfg,
+		metrics:      m,
+		log:          slog.With("service", "smtp"),
+		limiter:      lim,
+		localDomains: &sync.Map{},
+	}
+	if cfg.Hostname != "" {
+		be.localDomains.Store(cfg.Hostname, true)
+	}
+	return be
+}
+
+// ReloadDomains replaces the set of locally-served domains used for
+// relay authorization. The configured hostname is always included.
+func (b *Backend) ReloadDomains(domains []string) {
+	m := &sync.Map{}
+	if b.cfg.Hostname != "" {
+		m.Store(b.cfg.Hostname, true)
+	}
+	for _, d := range domains {
+		m.Store(d, true)
+	}
+	b.localDomains = m
 }
 
 // NewSession is called by the SMTP server for each new connection.

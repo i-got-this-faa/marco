@@ -9,6 +9,7 @@ import (
 	"github.com/emersion/go-imap/backend"
 	"github.com/i-got-this-faa/marco/pkg/auth"
 	"github.com/i-got-this-faa/marco/pkg/blobstore"
+	"github.com/i-got-this-faa/marco/pkg/util"
 )
 
 // Backend implements backend.Backend for the IMAP server.
@@ -38,12 +39,16 @@ func (be *Backend) Login(connInfo *imap.ConnInfo, username, password string) (ba
 		return nil, err
 	}
 
+	cid := util.NewCorrelationID()
+	log := be.log.With("correlation_id", cid)
+	log.Info("imap login", "user", username)
+
 	return &User{
 		userID:   userID,
 		email:    username,
 		db:       be.db,
 		blob:     be.blob,
-		log:      be.log,
+		log:      log,
 		notifier: be.notifier,
 	}, nil
 }

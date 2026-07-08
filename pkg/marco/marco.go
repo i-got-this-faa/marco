@@ -181,7 +181,9 @@ func Run() {
 	}
 
 	// Create servers.
-	smtpSrv := smtp.NewServer(&cfg.SMTP, db, blob, qm, am, dk, m, tlsCfg)
+	smtpBe := smtp.NewBackend(&cfg.SMTP, db, blob, qm, am, dk, m)
+	smtpBe.ReloadDomains(cfg.Domains)
+	smtpSrv := smtp.NewServer(smtpBe, tlsCfg)
 	imapBe := imap.NewBackend(db, blob, am)
 	imapSrv := imap.NewServer(&cfg.IMAP, imapBe, tlsCfg)
 	apiSrv := api.NewServer(&cfg.Admin, db, blob, qm, am, dk, tlsCfg, m, cfg.DKIM, cfg.DKIM.PrivateKeyPath)
@@ -293,6 +295,7 @@ loop:
 			if err := reloadConfig(cfg); err != nil {
 				slog.Error("config reload failed", "error", err)
 			} else {
+				smtpBe.ReloadDomains(cfg.Domains)
 				slog.Info("configuration reloaded")
 			}
 		default:

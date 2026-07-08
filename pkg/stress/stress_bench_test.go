@@ -103,7 +103,8 @@ func makeServer(b *testing.B, db *sql.DB) (addr string, stop func()) {
 		MaxRecipients:  1000,
 	}
 
-	srv := smtp.NewServer(cfg, db, blob, qm, am, nil, met, (*tls.Config)(nil))
+	be := smtp.NewBackend(cfg, db, blob, qm, am, nil, met)
+	srv := smtp.NewServer(be, (*tls.Config)(nil))
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		b.Fatalf("Listen: %v", err)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/i-got-this-faa/marco/pkg/storage"
+	"github.com/i-got-this-faa/marco/pkg/util"
 )
 
 // POP3 protocol states.
@@ -30,6 +31,7 @@ type Session struct {
 	br     *bufio.Reader
 	bw     *bufio.Writer
 	log    *slog.Logger
+	ctx    context.Context
 	state  int
 	userID int64
 	email  string
@@ -340,7 +342,7 @@ func (s *Session) handleRETR(arg string) bool {
 		n, err := blob.Read(buf)
 		if n > 0 {
 			if err := s.dotStuffWrite(buf[:n]); err != nil {
-				slog.Warn("pop3 retr write error", "error", err)
+				util.LoggerWithCorrelationID(s.ctx).Warn("pop3 retr write error", "error", err)
 				return true
 			}
 		}
@@ -348,7 +350,7 @@ func (s *Session) handleRETR(arg string) bool {
 			break
 		}
 		if err != nil {
-			slog.Warn("pop3 retr read error", "error", err)
+			util.LoggerWithCorrelationID(s.ctx).Warn("pop3 retr read error", "error", err)
 			return true
 		}
 	}

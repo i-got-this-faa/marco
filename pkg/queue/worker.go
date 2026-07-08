@@ -12,6 +12,7 @@ import (
 	"strings"
 	"strconv"
 	"time"
+	"github.com/i-got-this-faa/marco/pkg/util"
 	"github.com/i-got-this-faa/marco/pkg/storage"
 )
 
@@ -36,21 +37,23 @@ func (m *Manager) worker(ctx context.Context) {
 
 // deliverNext claims one pending queue item and attempts delivery.
 func (m *Manager) deliverNext(ctx context.Context) {
+	cidCtx := util.NewContextWithCID(context.Background())
+	log := util.LoggerWithCorrelationID(cidCtx)
 	item, err := storage.ClaimNext(ctx, m.db)
 	if err != nil {
-		m.log.Error("claim failed", "error", err)
+		log.Error("claim failed", "error", err)
 		return
 	}
 	if item == nil {
 		return // nothing to do
 	}
 
-	m.log.Debug("delivering", "queue_id", item.ID, "rcpt", item.RcptTo)
+	log.Debug("delivering", "queue_id", item.ID, "rcpt", item.RcptTo)
 
 	// 1. Look up message to get blob key and envelope from.
 	msg, err := storage.GetMessageByID(ctx, m.db, item.MessageID)
 	if err != nil {
-		m.log.Error("get message failed", "queue_id", item.ID, "error", err)
+		log.Error("get message failed", "queue_id", item.ID, "error", err)
 		_ = storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 		return
 	}
@@ -58,16 +61,16 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	// 2. Read message blob into memory.
 	rc, err := m.blob.Get(ctx, msg.BlobKey)
 	if err != nil {
-		m.log.Error("get blob failed", "queue_id", item.ID, "blob_key", msg.BlobKey, "error", err)
+		log.Error("get blob failed", "queue_id", item.ID, "blob_key", msg.BlobKey, "error", err)
 		if ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries); ferr != nil {
-			m.log.Error("requeue failed", "error", ferr)
+			log.Error("requeue failed", "error", ferr)
 		}
 		return
 	}
 	raw, err := io.ReadAll(rc)
 	rc.Close()
 	if err != nil {
-		m.log.Error("read blob failed", "error", err)
+		log.Error("read blob failed", "error", err)
 		_ = storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 		return
 	}
@@ -77,7 +80,7 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	if m.dkim != nil {
 		signed, err := m.dkim.Sign(ctx, bytes.NewReader(raw))
 		if err != nil {
-			m.log.Warn("dkim sign failed", "error", err)
+			log.Warn("dkim sign failed", "error", err)
 			msgData = raw
 		} else {
 			msgData = signed
@@ -89,7 +92,7 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	// 4. Extract recipient domain.
 	parts := strings.SplitN(item.RcptTo, "@", 2)
 	if len(parts) != 2 {
-		m.log.Error("invalid recipient address", "rcpt", item.RcptTo)
+		log.Error("invalid recipient address", "rcpt", item.RcptTo)
 		_ = storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 		return
 	}
@@ -98,14 +101,14 @@ func (m *Manager) deliverNext(ctx context.Context) {
 	// 5. Check if domain is local; deliver directly if so.
 	isLocal, err := storage.IsLocalDomain(ctx, m.db, domain)
 	if err != nil {
-		m.log.Error("local domain check failed", "domain", domain, "error", err)
+		log.Error("local domain check failed", "domain", domain, "error", err)
 		_ = storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 		return
 	}
 	if isLocal {
-		m.log.Info("local delivery", "queue_id", item.ID, "rcpt", item.RcptTo)
+		log.Info("local delivery", "queue_id", item.ID, "rcpt", item.RcptTo)
 		if err := m.deliverLocal(ctx, msg, item, raw); err != nil {
-			m.log.Error("local delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", err)
+			log.Error("local delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", err)
 			ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 			if errors.Is(ferr, storage.ErrMaxRetries) {
 				_ = m.BounceMessage(msg.FromAddr, item.RcptTo, "local delivery failed: "+err.Error(), nil)
@@ -113,7 +116,7 @@ func (m *Manager) deliverNext(ctx context.Context) {
 			return
 		}
 		if cerr := storage.Complete(ctx, m.db, item.ID); cerr != nil {
-			m.log.Error("complete failed", "queue_id", item.ID, "error", cerr)
+			log.Error("complete failed", "queue_id", item.ID, "error", cerr)
 		}
 		m.metrics.QueuePending.Dec()
 		m.metrics.MessagesDelivered.Inc()
@@ -122,10 +125,10 @@ func (m *Manager) deliverNext(ctx context.Context) {
 
 	// 5b. If a relay (smart host) is configured, use it instead of MX delivery.
 	if m.relayCfg.Host != "" {
-		m.log.Debug("relay delivery", "queue_id", item.ID, "rcpt", item.RcptTo, "relay", m.relayCfg.Host)
+		log.Debug("relay delivery", "queue_id", item.ID, "rcpt", item.RcptTo, "relay", m.relayCfg.Host)
 		err := deliverViaRelay(msgData, m.relayCfg, msg.FromAddr, item.RcptTo)
 		if err != nil {
-			m.log.Warn("relay delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", err)
+			log.Warn("relay delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", err)
 			ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 			if errors.Is(ferr, storage.ErrMaxRetries) {
 				_ = m.BounceMessage(msg.FromAddr, item.RcptTo, "relay delivery failed: "+err.Error(), nil)
@@ -133,18 +136,18 @@ func (m *Manager) deliverNext(ctx context.Context) {
 			return
 		}
 		if cerr := storage.Complete(ctx, m.db, item.ID); cerr != nil {
-			m.log.Error("complete failed", "queue_id", item.ID, "error", cerr)
+			log.Error("complete failed", "queue_id", item.ID, "error", cerr)
 		}
 		m.metrics.QueuePending.Dec()
 		m.metrics.MessagesDelivered.Inc()
-		m.log.Info("relay delivered", "queue_id", item.ID, "rcpt", item.RcptTo, "relay", m.relayCfg.Host)
+		log.Info("relay delivered", "queue_id", item.ID, "rcpt", item.RcptTo, "relay", m.relayCfg.Host)
 		return
 	}
 
 	// 6. MX lookup for remote delivery.
 	mxes, err := net.LookupMX(domain)
 	if err != nil || len(mxes) == 0 {
-		m.log.Error("mx lookup failed", "domain", domain, "error", err)
+		log.Error("mx lookup failed", "domain", domain, "error", err)
 		ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 		if errors.Is(ferr, storage.ErrMaxRetries) {
 			reason := "mx lookup failed"
@@ -163,23 +166,23 @@ func (m *Manager) deliverNext(ctx context.Context) {
 		if lastErr == nil {
 			// Success.
 			if cerr := storage.Complete(ctx, m.db, item.ID); cerr != nil {
-				m.log.Error("complete failed", "queue_id", item.ID, "error", cerr)
+				log.Error("complete failed", "queue_id", item.ID, "error", cerr)
 			}
 			m.metrics.QueuePending.Dec()
 			m.metrics.MessagesDelivered.Inc()
-			m.log.Info("delivered", "queue_id", item.ID, "rcpt", item.RcptTo, "mx", mx.Host)
+			log.Info("delivered", "queue_id", item.ID, "rcpt", item.RcptTo, "mx", mx.Host)
 			return
 		}
-		m.log.Warn("delivery attempt failed", "mx", mx.Host, "error", lastErr)
+		log.Warn("delivery attempt failed", "mx", mx.Host, "error", lastErr)
 	}
 
 	// All MX attempts failed.
-	m.log.Error("delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", lastErr)
+	log.Error("delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", lastErr)
 	ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
 	if errors.Is(ferr, storage.ErrMaxRetries) {
 		_ = m.BounceMessage(msg.FromAddr, item.RcptTo, "delivery failed: "+lastErr.Error(), nil)
 	} else if ferr != nil {
-		m.log.Error("requeue failed", "error", ferr)
+		log.Error("requeue failed", "error", ferr)
 	}
 }
 

@@ -96,15 +96,8 @@ func testBackend(t *testing.T) (*Backend, *sql.DB) {
 	am := auth.NewManager(db)
 	cfg := testConfig()
 
-	be := &Backend{
-		db:      db,
-		blob:    blob,
-		queue:   qm,
-		auth:    am,
-		cfg:     cfg,
-		metrics: metricsReg,
-		log:     slog.With("service", "smtp", "test", true),
-	}
+	be := NewBackend(cfg, db, blob, qm, am, nil, metricsReg)
+	be.log = slog.With("service", "smtp", "test", true)
 	return be, db
 }
 
@@ -520,10 +513,10 @@ func TestSession_Logout(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServer_NewServer(t *testing.T) {
-	be, db := testBackend(t)
+	be, _ := testBackend(t)
 	cfg := testConfig()
 
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	srv := NewServer(be, nil)
 	if srv == nil {
 		t.Fatal("NewServer returned nil")
 	}
@@ -545,9 +538,8 @@ func TestServer_NewServer(t *testing.T) {
 }
 
 func TestServer_ServeAndShutdown(t *testing.T) {
-	be, db := testBackend(t)
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	be, _ := testBackend(t)
+	srv := NewServer(be, nil)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -598,9 +590,8 @@ func TestServer_ServeTLS(t *testing.T) {
 		MinVersion:   tls.VersionTLS13,
 	}
 
-	be, db := testBackend(t)
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, tlsCfg)
+	be, _ := testBackend(t)
+	srv := NewServer(be, tlsCfg)
 	if srv.TLSConfig == nil {
 		t.Fatal("TLSConfig should be set")
 	}
@@ -639,8 +630,7 @@ func TestServer_ServeTLS(t *testing.T) {
 func TestSMTPIntegration_LocalDelivery(t *testing.T) {
 	be, db := testBackend(t)
 	ctx := context.Background()
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	srv := NewServer(be, nil)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -738,9 +728,8 @@ func TestSMTPIntegration_LocalDelivery(t *testing.T) {
 }
 
 func TestSMTPIntegration_RelayRejected(t *testing.T) {
-	be, db := testBackend(t)
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	be, _ := testBackend(t)
+	srv := NewServer(be, nil)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -785,9 +774,8 @@ func TestSMTPIntegration_RelayRejected(t *testing.T) {
 }
 
 func TestSMTPIntegration_EHLO(t *testing.T) {
-	be, db := testBackend(t)
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	be, _ := testBackend(t)
+	srv := NewServer(be, nil)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -820,9 +808,8 @@ func TestSMTPIntegration_EHLO(t *testing.T) {
 }
 
 func TestSMTPIntegration_InvalidMailFrom(t *testing.T) {
-	be, db := testBackend(t)
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	be, _ := testBackend(t)
+	srv := NewServer(be, nil)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -862,9 +849,8 @@ func TestSMTPIntegration_InvalidMailFrom(t *testing.T) {
 }
 
 func TestSMTPIntegration_Quit(t *testing.T) {
-	be, db := testBackend(t)
-	cfg := testConfig()
-	srv := NewServer(cfg, db, be.blob, be.queue, be.auth, nil, be.metrics, nil)
+	be, _ := testBackend(t)
+	srv := NewServer(be, nil)
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

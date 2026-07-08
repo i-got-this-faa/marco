@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"log/slog"
+	"context"
 	"net"
 
 	"github.com/i-got-this-faa/marco/pkg/auth"
 	"github.com/i-got-this-faa/marco/pkg/blobstore"
 	"github.com/i-got-this-faa/marco/pkg/config"
+	"github.com/i-got-this-faa/marco/pkg/util"
 )
 
 // Server handles POP3 connections.
@@ -57,6 +59,8 @@ func (s *Server) ServeTLS(l net.Listener) error {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
+	ctx := util.NewContextWithCID(context.Background())
+
 	br := bufio.NewReader(conn)
 	bw := bufio.NewWriter(conn)
 
@@ -66,6 +70,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		br:   br,
 		bw:   bw,
 		log:  s.log,
+		ctx:  ctx,
 	}
 	session.handle()
 }
