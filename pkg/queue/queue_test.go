@@ -79,7 +79,7 @@ func setupTest(t *testing.T, db *sql.DB) (userID int64, mailboxID int64, msgID i
 func createManager(t *testing.T, db *sql.DB) *Manager {
 	t.Helper()
 	blob := blobstore.NewSQLiteStore(db)
-	return NewManager(db, blob, 5, 3, 100*time.Millisecond, "")
+	return NewManager(db, blob, 5, 3, 100*time.Millisecond, "", RelayConfig{})
 }
 
 // ---------------------------------------------------------------------------
@@ -743,7 +743,7 @@ func TestBounceMessage(t *testing.T) {
 	}
 
 	blob := blobstore.NewSQLiteStore(db)
-	mgr := NewManager(db, blob, 1, 3, time.Second, "")
+	mgr := NewManager(db, blob, 1, 3, time.Second, "", RelayConfig{})
 
 	originalMsg := []byte("From: sender@example.com\r\nSubject: hello\r\n\r\nbody")
 
@@ -794,7 +794,7 @@ func TestBounceMessage(t *testing.T) {
 func TestBounceMessageUnknownSender(t *testing.T) {
 	db := migrateTestDB(t)
 	blob := blobstore.NewSQLiteStore(db)
-	mgr := NewManager(db, blob, 1, 3, time.Second, "")
+	mgr := NewManager(db, blob, 1, 3, time.Second, "", RelayConfig{})
 
 	err := mgr.BounceMessage("nonexistent@example.com", "bob@invalid",
 		"550 Not found", []byte("original"))

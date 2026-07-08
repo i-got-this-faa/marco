@@ -67,6 +67,14 @@ workers = 2
 max_retries = 7
 interval = "5s"
 
+[relay]
+# SMTP relay (smart host) for outbound delivery.
+# When configured, all outbound mail goes through this server instead
+# of direct MX delivery. Useful when your ISP blocks port 25.
+# host = "smtp.gmail.com"
+# port = 587
+# username = "your@gmail.com"
+# password = "app-password"
 [dkim]
 # Domain for DKIM signatures.
 domain = "example.com"

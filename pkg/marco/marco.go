@@ -156,7 +156,13 @@ func Run() {
 	}
 
 	// Queue manager.
-	qm := queue.NewManager(db, blob, cfg.Queue.Workers, cfg.Queue.MaxRetries, cfg.Queue.Interval, cfg.IPVersion)
+	relayCfg := queue.RelayConfig{
+		Host:     cfg.Relay.Host,
+		Port:     cfg.Relay.Port,
+		Username: cfg.Relay.Username,
+		Password: cfg.Relay.Password,
+	}
+	qm := queue.NewManager(db, blob, cfg.Queue.Workers, cfg.Queue.MaxRetries, cfg.Queue.Interval, cfg.IPVersion, relayCfg)
 
 	// Prometheus metrics registry.
 	m := metrics.NewRegistry()

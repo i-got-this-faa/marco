@@ -58,7 +58,7 @@ func startSMTPServer(t *testing.T, db *sql.DB) string {
 	t.Helper()
 	blob := blobstore.NewSQLiteStore(db)
 	met := metrics.NewRegistry()
-	qm := queue.NewManager(db, blob, 1, 3, time.Second, "")
+	qm := queue.NewManager(db, blob, 1, 3, time.Second, "", queue.RelayConfig{})
 	am := auth.NewManager(db)
 
 	cfg := &config.SMTPConfig{

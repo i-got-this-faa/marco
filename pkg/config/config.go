@@ -22,6 +22,7 @@ type Config struct {
 	ACME      ACMEConfig    `toml:"acme"`
 	Auth      AuthConfig    `toml:"auth"`
 	Queue     QueueConfig   `toml:"queue"`
+	Relay     RelayConfig   `toml:"relay"`
 	DKIM      DKIMConfig    `toml:"dkim"`
 	DMARC     DMARCConfig   `toml:"dmarc"`
 	Admin     AdminConfig   `toml:"admin"`
@@ -108,6 +109,13 @@ type DMARCConfig struct {
 	ReportInterval time.Duration `toml:"report_interval"`
 	Email          string        `toml:"email"`
 }
+// RelayConfig controls outbound SMTP relay (smart host) settings.
+type RelayConfig struct {
+	Host     string `toml:"host"`
+	Port     int    `toml:"port"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+}
 // LogConfig controls structured logging.
 type LogConfig struct {
 	Level  string `toml:"level"`
@@ -191,6 +199,9 @@ func defaultConfig() *Config {
 			Workers:    2,
 			MaxRetries: 7,
 			Interval:   5 * time.Second,
+		},
+		Relay: RelayConfig{
+			Port: 587,
 		},
 		Admin: AdminConfig{
 			ListenAddr:     ":8080",

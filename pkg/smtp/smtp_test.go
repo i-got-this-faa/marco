@@ -92,7 +92,7 @@ func testBackend(t *testing.T) (*Backend, *sql.DB) {
 
 	blob := blobstore.NewSQLiteStore(db)
 	metricsReg := metrics.NewRegistry()
-	qm := queue.NewManager(db, blob, 1, 3, time.Second, "")
+	qm := queue.NewManager(db, blob, 1, 3, time.Second, "", queue.RelayConfig{})
 	am := auth.NewManager(db)
 	cfg := testConfig()
 

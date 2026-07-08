@@ -252,6 +252,13 @@ workers = 2
 max_retries = 3
 interval = "5s"
 
+[relay]
+# No relay configured - using direct MX delivery.
+host = ""
+port = 0
+username = ""
+password = ""
+
 [dkim]
 domain = "{hostname}"
 selector = "default"

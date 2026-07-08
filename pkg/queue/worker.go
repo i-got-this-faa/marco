@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/smtp"
 	"strings"
+	"strconv"
 	"time"
 	"github.com/i-got-this-faa/marco/pkg/storage"
 )
@@ -116,6 +117,27 @@ func (m *Manager) deliverNext(ctx context.Context) {
 		}
 		m.metrics.QueuePending.Dec()
 		m.metrics.MessagesDelivered.Inc()
+		return
+	}
+
+	// 5b. If a relay (smart host) is configured, use it instead of MX delivery.
+	if m.relayCfg.Host != "" {
+		m.log.Debug("relay delivery", "queue_id", item.ID, "rcpt", item.RcptTo, "relay", m.relayCfg.Host)
+		err := deliverViaRelay(msgData, m.relayCfg, msg.FromAddr, item.RcptTo)
+		if err != nil {
+			m.log.Warn("relay delivery failed", "queue_id", item.ID, "rcpt", item.RcptTo, "error", err)
+			ferr := storage.Fail(ctx, m.db, item.ID, nextAttempt(item.AttemptCount), m.maxRetries)
+			if errors.Is(ferr, storage.ErrMaxRetries) {
+				_ = m.BounceMessage(msg.FromAddr, item.RcptTo, "relay delivery failed: "+err.Error(), nil)
+			}
+			return
+		}
+		if cerr := storage.Complete(ctx, m.db, item.ID); cerr != nil {
+			m.log.Error("complete failed", "queue_id", item.ID, "error", cerr)
+		}
+		m.metrics.QueuePending.Dec()
+		m.metrics.MessagesDelivered.Inc()
+		m.log.Info("relay delivered", "queue_id", item.ID, "rcpt", item.RcptTo, "relay", m.relayCfg.Host)
 		return
 	}
 
@@ -274,6 +296,16 @@ func deliverToMX(r io.Reader, mxHost, mailFrom, rcptTo, ipVersion string) error 
 	}
 
 	return c.Quit()
+}
+
+// deliverViaRelay sends a message through a configured SMTP relay (smart host).
+func deliverViaRelay(raw []byte, rcfg RelayConfig, mailFrom, rcptTo string) error {
+	addr := net.JoinHostPort(rcfg.Host, strconv.Itoa(rcfg.Port))
+	var auth smtp.Auth
+	if rcfg.Username != "" {
+		auth = smtp.PlainAuth("", rcfg.Username, rcfg.Password, rcfg.Host)
+	}
+	return smtp.SendMail(addr, auth, mailFrom, []string{rcptTo}, raw)
 }
 
 // dialForIPVersion resolves mxHost to IP addresses filtered by the preferred

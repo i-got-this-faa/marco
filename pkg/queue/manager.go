@@ -13,6 +13,14 @@ import (
 	"github.com/i-got-this-faa/marco/pkg/storage"
 )
 
+// RelayConfig configures an optional SMTP relay (smart host) for outbound delivery.
+type RelayConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+}
+
 // Manager handles outbound message delivery with retries and backoff.
 type Manager struct {
 	db         *sql.DB
@@ -22,13 +30,14 @@ type Manager struct {
 	maxRetries int
 	interval   time.Duration
 	ipVersion  string
+	relayCfg   RelayConfig
 	log        *slog.Logger
 	metrics    *metrics.Registry
 	stopCh     chan struct{}
 	wg         sync.WaitGroup
 }
 
-func NewManager(db *sql.DB, blob blobstore.Store, workers, maxRetries int, interval time.Duration, ipVersion string) *Manager {
+func NewManager(db *sql.DB, blob blobstore.Store, workers, maxRetries int, interval time.Duration, ipVersion string, relayCfg RelayConfig) *Manager {
 	return &Manager{
 		db:         db,
 		blob:       blob,
@@ -36,6 +45,7 @@ func NewManager(db *sql.DB, blob blobstore.Store, workers, maxRetries int, inter
 		maxRetries: maxRetries,
 		interval:   interval,
 		ipVersion:  ipVersion,
+		relayCfg:   relayCfg,
 		log:        slog.With("service", "queue"),
 		metrics:    metrics.NewRegistry(),
 		stopCh:     make(chan struct{}),
