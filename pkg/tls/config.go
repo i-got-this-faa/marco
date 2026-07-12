@@ -27,7 +27,7 @@ func ServerConfig(cfg *config.TLSConfig, hostname string, acmeMgr *autocert.Mana
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	} else {
 		// Self-signed fallback.
-		cert, err := SelfSignedCert(hostname)
+		cert, err := SelfSignedCert(hostname, "127.0.0.1", "::1")
 		if err != nil {
 			return nil, fmt.Errorf("tls: self-signed: %w", err)
 		}

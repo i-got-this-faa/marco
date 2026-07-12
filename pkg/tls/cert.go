@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"time"
 )
@@ -23,7 +24,9 @@ func LoadX509KeyPair(certFile, keyFile string) (tls.Certificate, error) {
 }
 
 // SelfSignedCert generates a self-signed certificate for the given hostname.
-func SelfSignedCert(hostname string) (tls.Certificate, error) {
+// Extra SANs (DNS names or IP addresses) can be provided for additional
+// addresses the certificate should be valid for.
+func SelfSignedCert(hostname string, extraSANs ...string) (tls.Certificate, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("tls: generate key: %w", err)
@@ -32,6 +35,16 @@ func SelfSignedCert(hostname string) (tls.Certificate, error) {
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("tls: serial: %w", err)
+	}
+
+	dnsNames := []string{hostname}
+	var ipAddresses []net.IP
+	for _, san := range extraSANs {
+		if ip := net.ParseIP(san); ip != nil {
+			ipAddresses = append(ipAddresses, ip)
+		} else {
+			dnsNames = append(dnsNames, san)
+		}
 	}
 
 	template := &x509.Certificate{
@@ -44,7 +57,8 @@ func SelfSignedCert(hostname string) (tls.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{hostname},
+		DNSNames:              dnsNames,
+		IPAddresses:           ipAddresses,
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)

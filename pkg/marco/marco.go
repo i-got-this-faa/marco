@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
+	cryptotls "crypto/tls"
 	"database/sql"
 	"encoding/pem"
 	"errors"
@@ -226,7 +227,23 @@ func Run() {
 
 	// IMAP listeners (the same server handles both).
 	startListener("imap", cfg.IMAP.ListenAddr, imapSrv)
-	startListener("imaps", cfg.IMAP.ImapsAddr, imapSrv)
+	// IMAPS listener wraps the connection in TLS from the first byte.
+	if cfg.IMAP.ImapsAddr != "" {
+		l, err := net.Listen(listenNetwork(cfg.IPVersion), cfg.IMAP.ImapsAddr)
+		if err != nil {
+			slog.Error("failed to listen", "service", "imaps", "addr", cfg.IMAP.ImapsAddr, "error", err)
+			os.Exit(1)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tlsListener := cryptotls.NewListener(l, tlsCfg)
+			slog.Info("listening", "service", "imaps", "addr", l.Addr())
+			if err := imapSrv.Serve(tlsListener); err != nil {
+				slog.Error("serve stopped", "service", "imaps", "error", err)
+			}
+		}()
+	}
 
 	// POP3 listeners.
 	var pop3Srv *pop3.Server
